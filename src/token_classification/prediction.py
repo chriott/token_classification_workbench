@@ -46,7 +46,6 @@ def _tokenize_for_prediction(dataset, tokenizer, max_length: int):
 
 def save_prediction_outputs(trainer, tokenized_dataset, raw_dataset, output_dir: str | Path, id_to_label: dict[int, str]):
     import numpy as np
-    from transformers import EvalPrediction
 
     prediction_output = trainer.predict(tokenized_dataset)
     predicted_ids = np.argmax(prediction_output.predictions, axis=2)

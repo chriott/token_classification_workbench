@@ -18,7 +18,7 @@ class TrainingConfig:
     train_weight_decay: float = 0.01
     text_column: str | None = None
     spans_column: str = "spans"
-    optional_string_columns: tuple[str, ...] = ("subject_id", "hadm_id", "chartdate")
+    optional_string_columns: tuple[str, ...] = ()
     train_file: str = "data/train.csv"
     validation_file: str | None = "data/validation.csv"
     test_file: str = "data/test.csv"

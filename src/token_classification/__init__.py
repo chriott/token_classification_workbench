@@ -1,4 +1,4 @@
-"""Training package for IPI token classification models."""
+"""Tools for training token-classification models from span annotations."""
 
 from .config import TrainingConfig
 from .training import run_pipeline

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from ipi_training.cli import build_parser
-from ipi_training.config import TrainingConfig
-from ipi_training.training import merge_training_splits_for_final_mode
+from token_classification.cli import build_parser
+from token_classification.config import TrainingConfig
+from token_classification.training import merge_training_splits_for_final_mode
 
 
 def test_training_config_allows_missing_validation_for_final_training():

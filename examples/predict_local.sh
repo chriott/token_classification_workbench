@@ -2,6 +2,6 @@
 
 set -euo pipefail
 
-python ipi.py predict \
+token-classification predict \
   --model-path outputs/training/baseline \
   --input-file data/prediction_input.csv

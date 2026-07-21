@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-python ipi.py split-data \
+token-classification split-data \
   --input-file data/annotated_documents.jsonl \
   --output-dir data/splits \
   --seed 42 \

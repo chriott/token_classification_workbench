@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
-import csv
 import io
-import json
 import os
 from pathlib import Path
 from typing import Sequence
@@ -137,7 +135,9 @@ def load_csv_dataset(path: str | Sequence[str]):
         dataset_name = "json"
     else:
         raise ValueError(f"Unsupported input file format: {suffix}")
-    cache_dir = ensure_directory(Path(os.environ.get("IPI_DATASET_CACHE_DIR", ".cache/huggingface/datasets")))
+    cache_dir = ensure_directory(
+        Path(os.environ.get("TOKEN_CLASSIFICATION_CACHE_DIR", ".cache/huggingface/datasets"))
+    )
     with contextlib.redirect_stderr(io.StringIO()):
         from datasets import load_dataset
     return load_dataset(dataset_name, data_files=data_files, cache_dir=str(cache_dir))["data"]

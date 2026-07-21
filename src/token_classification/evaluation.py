@@ -83,7 +83,14 @@ def classify_span_sets(predicted_spans, gold_spans):
     )
 
 
-def save_test_predictions(trainer, tokenized_dataset, raw_dataset, output_dir: str | Path, schema: LabelSchema):
+def save_test_predictions(
+    trainer,
+    tokenized_dataset,
+    raw_dataset,
+    output_dir: str | Path,
+    schema: LabelSchema,
+    metadata_fields: Sequence[str] = (),
+):
     import numpy as np
 
     prediction_output = trainer.predict(tokenized_dataset)
@@ -94,7 +101,7 @@ def save_test_predictions(trainer, tokenized_dataset, raw_dataset, output_dir: s
     offsets_all = tokenized_python["offset_mapping"]
     detailed_records = []
     flat_rows = []
-    metadata_fields = ["source_row_id", "chunk_index", "subject_id", "hadm_id", "chartdate"]
+    metadata_fields = list(metadata_fields)
 
     for index in range(len(raw_python)):
         raw_example = raw_python[index]
@@ -293,11 +300,7 @@ def evaluate_with_nervaluate(
         rows = parse_per_tag_rows(per_tag_sections.get(scenario, []))
         if not rows:
             continue
-        groups = {
-            "overall": rows,
-            "phi": [row for row in rows if row["label"].startswith("PHI-")],
-            "ipi": [row for row in rows if row["label"].startswith("IPI-")],
-        }
+        groups = {"overall": rows}
         scenario_rollups: Dict[str, object] = {}
         for group_name, group_rows in groups.items():
             metrics_rollup = compute_micro_macro(group_rows)

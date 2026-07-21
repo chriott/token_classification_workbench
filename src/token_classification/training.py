@@ -279,6 +279,7 @@ def run_pipeline(
         dataset_splits["test"],
         run_output_dir,
         schema,
+        metadata_fields=config.optional_string_columns,
     )
     print(
         "\nSaved detailed prediction outputs to:\n"

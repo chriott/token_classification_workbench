@@ -49,7 +49,7 @@ Set this to `[]` when no metadata needs to be preserved.
 Create train, validation, and test CSVs with:
 
 ```bash
-python ipi.py split-data \
+token-classification split-data \
   --input-file data/annotated_documents.jsonl \
   --output-dir data/splits \
   --seed 42 \
@@ -57,20 +57,20 @@ python ipi.py split-data \
   --min-label-presence 1
 ```
 
-Use `python ipi.py split-data --help` to see ratio, stratification, chunking, manifest, and output-format options. When token chunking is enabled, also provide `--chunk-max-length` and `--chunk-tokenizer-model`.
+Use `token-classification split-data --help` to see ratio, stratification, chunking, manifest, and output-format options. When token chunking is enabled, also provide `--chunk-max-length` and `--chunk-tokenizer-model`.
 
 ## Validate Before Training
 
 Check parsing, offset bounds, overlaps, and tokenizer alignment:
 
 ```bash
-python ipi.py validate-data --config configs/train.example.yaml
+token-classification validate-data --config configs/train.example.yaml
 ```
 
 Check that every validation and test label is represented in training:
 
 ```bash
-python ipi.py label-coverage --config configs/train.example.yaml
+token-classification label-coverage --config configs/train.example.yaml
 ```
 
 The model schema is derived from training labels. A validation or test label absent from training cannot be learned and should be fixed by changing the split or adding suitable training examples.

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import csv
 
-from ipi_training.config import TrainingConfig
-from ipi_training.label_coverage import build_label_coverage_report
+from token_classification.config import TrainingConfig
+from token_classification.label_coverage import build_label_coverage_report
 
 
 def test_build_label_coverage_report_lists_missing_labels(tmp_path):

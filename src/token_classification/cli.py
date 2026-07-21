@@ -15,8 +15,8 @@ from .training import run_pipeline
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python ipi.py",
-        description="Train IPI token classification models from a YAML config file.",
+        prog="token-classification",
+        description="Train token-classification models from character-span annotations.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

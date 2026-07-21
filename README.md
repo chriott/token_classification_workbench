@@ -1,26 +1,39 @@
-# IPI/PHI Model Training
+# Token Classification Workbench
 
-This repository provides a configurable token-classification workflow for training IPI/PHI detection models. It includes data splitting, validation, label-coverage checks, training, evaluation, prediction, and local hyperparameter sweeps.
+A configurable workflow for training token-classification models from character-span annotations. It supports data splitting, validation, label-coverage checks, Hugging Face model training, evaluation, prediction, and local hyperparameter sweeps.
 
-Datasets, generated splits, model checkpoints, and outputs are intentionally excluded from Git. Each collaborator supplies their own annotated data and label set.
+Label names are discovered from the training data, so the same pipeline can be used for named-entity recognition, domain-specific entity extraction, and other non-overlapping span-labeling tasks without changing Python code.
+
+Datasets, generated splits, checkpoints, and outputs stay local and are excluded from Git.
+
+## Scope
+
+This project expects text with labeled character spans and converts those spans to BIO token labels. It is designed for flat, non-overlapping token classification. Nested or overlapping entities, document classification, relation extraction, and text generation require different modeling approaches.
 
 ## Requirements
 
-- Python 3.10 or 3.11
+- Python 3.10 or newer
 - A PyTorch installation suitable for your CPU, CUDA, or Apple Silicon setup
 - A fresh virtual environment
 
-Create the environment and install the Python dependencies:
+Create an environment, install the appropriate PyTorch build for your machine, and install the workbench:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-# Install the appropriate torch build for your machine first.
-pip install -r requirements.txt
+# Install PyTorch for your hardware: https://pytorch.org/get-started/locally/
+pip install -e ".[dev]"
 ```
 
-PyTorch is not pinned in `requirements.txt` because its correct installation depends on the available hardware.
+PyTorch is intentionally not declared as a project dependency because its correct build depends on the available hardware. The editable install provides the `token-classification` command. `python token_classifier.py` remains available as a repository-local launcher.
+
+Verify the installation:
+
+```bash
+token-classification --help
+token-classification validate-config --config configs/train.example.yaml
+```
 
 ## Repository Layout
 
@@ -32,20 +45,20 @@ PyTorch is not pinned in `requirements.txt` because its correct installation dep
 ├── data/                 # local and ignored, except for its README
 ├── docs/
 ├── examples/
-├── src/ipi_training/
+├── src/token_classification/
 ├── tests/
-├── ipi.py
-└── requirements.txt
+├── pyproject.toml
+└── token_classifier.py
 ```
 
-## Prepare Your Data
+## Prepare Data
 
 The pipeline accepts annotated CSV, JSON, or JSONL records. Each record needs a text field and character-offset spans containing `start`, `end`, and `label`.
 
-To split an annotated source file:
+Split an annotated source file:
 
 ```bash
-python ipi.py split-data \
+token-classification split-data \
   --input-file data/annotated_documents.jsonl \
   --output-dir data/splits \
   --seed 42 \
@@ -53,7 +66,7 @@ python ipi.py split-data \
   --min-label-presence 1
 ```
 
-The example training and sweep configs expect:
+The example configurations expect:
 
 ```text
 data/splits/train.csv
@@ -61,65 +74,51 @@ data/splits/validation.csv
 data/splits/test.csv
 ```
 
-Change those paths in the YAML files if you use a different layout. See [Dataset Format](docs/dataset_format.md) for the complete schema and splitting guidance.
+Change those paths when using a different layout. See [Dataset Format](docs/dataset_format.md) for the schema and splitting options.
 
-## Use Your Own Labels
+## Validate Labels and Spans
 
-Label names are not hard-coded. The training pipeline discovers them from the spans in the training split and creates the corresponding BIO labels automatically.
-
-Every label evaluated in validation or test should also occur in training. Check this before training:
+The model schema is derived from labels in the training split. Every label evaluated in validation or test should therefore also appear in training.
 
 ```bash
-python ipi.py label-coverage --config configs/train.example.yaml
+token-classification validate-data --config configs/train.example.yaml
+token-classification label-coverage --config configs/train.example.yaml
 ```
 
-## Configure and Train
+## Train
 
-Copy or edit `configs/train.example.yaml` to choose the model, data paths, output directory, batch size, and other hyperparameters.
-
-Validate the YAML without loading data or downloading a model:
+Copy or edit `configs/train.example.yaml` to choose the model, data paths, output directory, batch size, metadata columns, and other hyperparameters.
 
 ```bash
-python ipi.py validate-config --config configs/train.example.yaml
+token-classification validate-config --config configs/train.example.yaml
+token-classification train --config configs/train.example.yaml
 ```
 
-Validate the configured datasets:
+The example uses `fp16: false` for portability. Enable it only when supported by your hardware and PyTorch setup.
+
+## Tune Hyperparameters
+
+Edit the base configuration and search space in `configs/sweeps/sweep.example.yaml`, then run:
 
 ```bash
-python ipi.py validate-data --config configs/train.example.yaml
-```
-
-Run training:
-
-```bash
-python ipi.py train --config configs/train.example.yaml
-```
-
-The example has `fp16: false` for portability. Enable it only when supported by your hardware and PyTorch setup.
-
-## Run a Sweep
-
-Edit the base config and search space in `configs/sweeps/sweep.example.yaml`, then run:
-
-```bash
-python ipi.py validate-sweep --config configs/sweeps/sweep.example.yaml
-python ipi.py sweep --config configs/sweeps/sweep.example.yaml
+token-classification validate-sweep --config configs/sweeps/sweep.example.yaml
+token-classification sweep --config configs/sweeps/sweep.example.yaml
 ```
 
 Sweep trials are ranked using validation metrics and do not evaluate the test set. See [Hyperparameter Tuning](docs/hyperparameter_tuning.md).
 
-## Run Prediction
+## Predict
 
 After training, run inference on a CSV file containing text:
 
 ```bash
-python ipi.py predict \
+token-classification predict \
   --model-path outputs/training/baseline \
   --input-file data/prediction_input.csv
 ```
 
-See [Output Artifacts](docs/outputs.md) for generated files and [Development Notes](docs/development.md) for the code layout.
+See [Output Artifacts](docs/outputs.md) for generated files and [Development Notes](docs/development.md) for the package layout.
 
-## Data Privacy
+## Data Handling
 
-The `data/` directory is ignored by Git, apart from `data/README.md`. Do not force-add patient, confidential, or licensed datasets. Share data only through an approved data-transfer and storage process.
+The `data/` directory is ignored by Git apart from `data/README.md`. Do not force-add sensitive, confidential, or restrictively licensed data. Share data only through an approved storage and transfer process.

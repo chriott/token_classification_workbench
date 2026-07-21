@@ -4,8 +4,8 @@ import sys
 import types
 from contextlib import contextmanager
 
-from ipi_training.config import TrainingConfig
-from ipi_training.training import make_trainer, make_training_args
+from token_classification.config import TrainingConfig
+from token_classification.training import make_trainer, make_training_args
 
 
 @contextmanager
@@ -19,6 +19,12 @@ def patched_transformers_module(module):
             del sys.modules["transformers"]
         else:
             sys.modules["transformers"] = original
+
+
+def test_training_config_has_no_domain_specific_metadata_defaults():
+    config = TrainingConfig()
+
+    assert config.optional_string_columns == ()
 
 
 def test_make_training_args_accepts_eval_strategy_alias():

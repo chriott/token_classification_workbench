@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import csv
 
-from ipi_training.config import TrainingConfig
-from ipi_training.data_validation import validate_dataset_file
+from token_classification.config import TrainingConfig
+from token_classification.data_validation import validate_dataset_file
 
 
 def test_validate_dataset_file_reports_basic_span_issues(tmp_path):

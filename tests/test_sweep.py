@@ -1,9 +1,9 @@
 import json
 import random
 
-from ipi_training.config import SweepConfig, SweepParameter, TrainingConfig
-from ipi_training.sweep import enumerate_grid_trial_overrides, run_sweep, sample_parameter_value, sample_trial_overrides
-from ipi_training.utils import write_json
+from token_classification.config import SweepConfig, SweepParameter, TrainingConfig
+from token_classification.sweep import enumerate_grid_trial_overrides, run_sweep, sample_parameter_value, sample_trial_overrides
+from token_classification.utils import write_json
 
 
 def test_sample_parameter_value_from_values():
@@ -165,7 +165,7 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
         )
         return run_dir
 
-    monkeypatch.setattr("ipi_training.sweep.run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr("token_classification.sweep.run_pipeline", fake_run_pipeline)
 
     sweep_root = run_sweep(sweep_config)
     leaderboard_path = sweep_root / "leaderboard.csv"

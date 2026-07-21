@@ -2,5 +2,5 @@
 
 set -euo pipefail
 
-python ipi.py validate-sweep --config configs/sweeps/sweep.example.yaml
-python ipi.py sweep --config configs/sweeps/sweep.example.yaml
+token-classification validate-sweep --config configs/sweeps/sweep.example.yaml
+token-classification sweep --config configs/sweeps/sweep.example.yaml

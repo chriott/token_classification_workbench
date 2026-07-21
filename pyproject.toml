@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69", "wheel>=0.38"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "token-classification-workbench"
+version = "0.1.0"
+description = "Train and evaluate token-classification models from character-span annotations."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "accelerate>=1.1.0",
+  "datasets>=2.18.0",
+  "nervaluate>=0.1.8",
+  "numpy>=1.24.0",
+  "PyYAML>=6.0.0",
+  "seqeval>=1.2.2",
+  "transformers>=4.41.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.5.0",
+]
+
+[project.scripts]
+token-classification = "token_classification.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"

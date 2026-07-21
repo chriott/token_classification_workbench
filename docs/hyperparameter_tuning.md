@@ -5,13 +5,13 @@ The repository supports local random and grid searches through the `sweep` comma
 Validate the sweep definition:
 
 ```bash
-python ipi.py validate-sweep --config configs/sweeps/sweep.example.yaml
+token-classification validate-sweep --config configs/sweeps/sweep.example.yaml
 ```
 
 Run it:
 
 ```bash
-python ipi.py sweep --config configs/sweeps/sweep.example.yaml
+token-classification sweep --config configs/sweeps/sweep.example.yaml
 ```
 
 ## Sweep Structure

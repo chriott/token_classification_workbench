@@ -58,4 +58,4 @@ These come from the `predict` CLI command and do not require gold labels in the 
 - `nervaluate_test.json`
 - `nervaluate_test.txt`
 
-These contain strict, entity-type, and partial-match summaries. Prefix-based `PHI-*` and `IPI-*` rollups are included when those label prefixes exist; arbitrary custom labels remain available in the per-label results.
+These contain strict, entity-type, and partial-match summaries, overall micro/macro rollups, and per-label results for every label discovered in the training data.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import json
 
-from ipi_training.split_data import _chunk_record, split_input_data
+from token_classification.split_data import _chunk_record, split_input_data
 
 
 class FakeWhitespaceTokenizer:
