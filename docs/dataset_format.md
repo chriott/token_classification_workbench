@@ -46,7 +46,7 @@ Set this to `[]` when no metadata needs to be preserved.
 
 ## Split Data
 
-Create train, validation, and test CSVs with:
+Choose `model_name` and `max_length` in the training config before chunking long documents. Then create train, validation, and test files using the same tokenizer and final sequence length:
 
 ```bash
 token-classification split-data \
@@ -54,10 +54,16 @@ token-classification split-data \
   --output-dir data/splits \
   --seed 42 \
   --stratify-by constrained_min_labels \
-  --min-label-presence 1
+  --min-label-presence 1 \
+  --chunk-max-length 512 \
+  --chunk-tokenizer-model FacebookAI/xlm-roberta-base
 ```
 
-Use `token-classification split-data --help` to see ratio, stratification, chunking, manifest, and output-format options. When token chunking is enabled, also provide `--chunk-max-length` and `--chunk-tokenizer-model`.
+`--chunk-max-length` is the final model input length. The chunker reserves the tokenizer's special tokens and uses the remaining capacity for content, preventing training-time truncation at chunk boundaries. `--chunk-stride` controls content-token overlap and must be smaller than that remaining capacity.
+
+The `--chunk-tokenizer-model` value should match `model_name` in the training config. Omit all chunk options only when every input record already fits within the selected model's maximum length.
+
+Use `token-classification split-data --help` to see ratio, stratification, manifest, stride, and output-format options.
 
 ## Validate Before Training
 

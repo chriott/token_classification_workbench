@@ -3,11 +3,21 @@ from __future__ import annotations
 import csv
 import json
 
+import pytest
+
 from token_classification.split_data import _chunk_record, split_input_data
 
 
 class FakeWhitespaceTokenizer:
-    def __call__(self, text, add_special_tokens=False, return_offsets_mapping=True, truncation=False):
+    def __init__(self, special_token_count=0):
+        self.special_token_count = special_token_count
+
+    def num_special_tokens_to_add(self, pair=False):
+        assert pair is False
+        return self.special_token_count
+
+    def __call__(self, text, add_special_tokens=False, return_offsets_mapping=True, truncation=False, verbose=True):
+        assert verbose is False
         offsets = []
         cursor = 0
         for token in text.split():
@@ -153,6 +163,34 @@ def test_chunk_record_uses_overlap_to_preserve_boundary_crossing_entity():
     assert len(chunks) >= 2
     assert chunks[0]["spans"] == []
     assert any(chunk["spans"] == [{"start": 0, "end": 5, "label": "ENTITY"}] for chunk in chunks)
+
+
+def test_chunk_record_reserves_space_for_model_special_tokens():
+    tokenizer = FakeWhitespaceTokenizer(special_token_count=2)
+    record = {"text": "one two three four five six", "spans": [], "_source_row_index": 0}
+
+    chunks = _chunk_record(
+        record,
+        tokenizer=tokenizer,
+        chunk_max_length=4,
+        chunk_stride=0,
+    )
+
+    assert [chunk["token_len"] for chunk in chunks] == [2, 2, 2]
+    assert all(chunk["token_len"] + tokenizer.special_token_count <= 4 for chunk in chunks)
+
+
+def test_chunk_record_rejects_limit_without_content_token_capacity():
+    tokenizer = FakeWhitespaceTokenizer(special_token_count=2)
+    record = {"text": "one two", "spans": [], "_source_row_index": 0}
+
+    with pytest.raises(ValueError, match="leave room for at least one content token"):
+        _chunk_record(
+            record,
+            tokenizer=tokenizer,
+            chunk_max_length=2,
+            chunk_stride=0,
+        )
 
 
 def test_split_input_data_can_chunk_after_splitting(tmp_path):

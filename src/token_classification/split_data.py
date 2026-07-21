@@ -590,13 +590,39 @@ def _find_token_index_for_char(offsets: list[tuple[int, int]], char_position: in
     return None
 
 
+def _resolve_chunk_content_length(tokenizer, chunk_max_length: int, chunk_stride: int) -> tuple[int, int]:
+    count_special_tokens = getattr(tokenizer, "num_special_tokens_to_add", None)
+    if callable(count_special_tokens):
+        try:
+            special_token_count = int(count_special_tokens(pair=False))
+        except TypeError:
+            special_token_count = int(count_special_tokens())
+    else:
+        special_token_count = 0
+
+    content_max_length = chunk_max_length - special_token_count
+    if content_max_length < 1:
+        raise ValueError(
+            "chunk_max_length must leave room for at least one content token after "
+            f"the tokenizer adds {special_token_count} special token(s)."
+        )
+    if chunk_stride >= content_max_length:
+        raise ValueError(
+            "chunk_stride must be smaller than the effective content-token capacity "
+            f"({content_max_length}) after reserving special tokens."
+        )
+    return content_max_length, special_token_count
+
+
 def _chunk_record(record: dict[str, Any], *, tokenizer, chunk_max_length: int, chunk_stride: int) -> list[dict[str, Any]]:
+    content_max_length, _ = _resolve_chunk_content_length(tokenizer, chunk_max_length, chunk_stride)
     text = record.get("text", "") or ""
     tokenized = tokenizer(
         text,
         add_special_tokens=False,
         return_offsets_mapping=True,
         truncation=False,
+        verbose=False,
     )
     raw_offsets = tokenized.get("offset_mapping", [])
     offsets = [(int(start), int(end)) for start, end in raw_offsets if int(end) > int(start)]
@@ -613,7 +639,7 @@ def _chunk_record(record: dict[str, Any], *, tokenizer, chunk_max_length: int, c
     start_token = 0
     chunk_index = 0
     while start_token < len(offsets):
-        end_token = min(start_token + chunk_max_length, len(offsets))
+        end_token = min(start_token + content_max_length, len(offsets))
         char_start = offsets[start_token][0]
         char_end = offsets[end_token - 1][1]
 
@@ -788,12 +814,19 @@ def split_input_data(
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     document_counts = {split_name: len(rows) for split_name, rows in split_records.items()}
+    chunk_content_length: int | None = None
+    chunk_special_token_count: int | None = None
     if chunk_max_length is not None:
         tokenizer = chunk_tokenizer
         if tokenizer is None:
             if not chunk_tokenizer_model:
                 raise ValueError("chunk_tokenizer_model must be set when chunk_max_length is enabled.")
             tokenizer = _build_chunk_tokenizer(chunk_tokenizer_model)
+        chunk_content_length, chunk_special_token_count = _resolve_chunk_content_length(
+            tokenizer,
+            chunk_max_length,
+            chunk_stride,
+        )
         split_records = {
             split_name: _chunk_records(
                 rows,
@@ -823,6 +856,8 @@ def split_input_data(
         "chunking": {
             "enabled": chunk_max_length is not None,
             "chunk_max_length": chunk_max_length,
+            "content_max_length": chunk_content_length,
+            "special_token_count": chunk_special_token_count,
             "chunk_stride": chunk_stride,
             "chunk_tokenizer_model": chunk_tokenizer_model,
         },

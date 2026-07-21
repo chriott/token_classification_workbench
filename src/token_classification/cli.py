@@ -103,13 +103,13 @@ def build_parser() -> argparse.ArgumentParser:
     split_data_parser.add_argument(
         "--chunk-max-length",
         type=int,
-        help="Optional max token length per output chunk.",
+        help="Optional final model input length per chunk, including tokenizer special tokens.",
     )
     split_data_parser.add_argument(
         "--chunk-stride",
         type=int,
         default=0,
-        help="Token overlap between adjacent chunks. Default: 0.",
+        help="Content-token overlap between adjacent chunks. Default: 0.",
     )
     split_data_parser.add_argument(
         "--chunk-tokenizer-model",
