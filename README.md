@@ -1,21 +1,14 @@
 # Token Classification Workbench
 
-A configurable workflow for training token-classification models from character-span annotations. It supports data splitting, validation, label-coverage checks, Hugging Face model training, evaluation, prediction, and local hyperparameter sweeps.
+A configurable workflow for training Hugging Face token-classification models from character-span annotations. It includes data splitting, validation, label-coverage checks, evaluation, prediction, and local hyperparameter sweeps.
 
-Label names are discovered from the training data, so the same pipeline can be used for named-entity recognition, domain-specific entity extraction, and other non-overlapping span-labeling tasks without changing Python code.
+Labels are discovered from the training data, so the same code can support named-entity recognition and other flat, non-overlapping span-labeling tasks.
 
-Datasets, generated splits, checkpoints, and outputs stay local and are excluded from Git.
+## Quick Start
 
-## Scope
+Run these commands from the repository root after cloning it.
 
-This project expects text with labeled character spans and converts those spans to BIO token labels. It is designed for flat, non-overlapping token classification. Nested or overlapping entities, document classification, relation extraction, and text generation require different modeling approaches.
-
-## Requirements
-
-- Python 3.10 or newer
-- A fresh virtual environment
-
-Create a standard Python virtual environment and install the workbench:
+### 1. Install
 
 ```bash
 python3 -m venv .venv
@@ -24,92 +17,56 @@ python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
-This installs PyTorch and the other runtime and development dependencies. The editable install provides the `token-classification` command, while `python token_classifier.py` remains available as a repository-local launcher.
+This installs PyTorch and provides the `token-classification` command. On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
 
-The default PyTorch package is appropriate for most users. Someone who deliberately needs a specialized CUDA, ROCm, or XPU build can install the matching PyTorch build for their platform before installing this project; Pip will keep it when it satisfies the declared version requirement.
+### 2. Create data splits
 
-Verify the installation:
-
-```bash
-token-classification --help
-token-classification validate-config --config configs/train.example.yaml
-```
-
-## Repository Layout
-
-```text
-.
-├── configs/
-│   ├── train.example.yaml
-│   └── sweeps/sweep.example.yaml
-├── data/                 # local and ignored, except for its README
-├── docs/
-├── examples/
-├── src/token_classification/
-├── tests/
-├── pyproject.toml
-└── token_classifier.py
-```
-
-## Prepare Data
-
-The pipeline accepts annotated CSV, JSON, or JSONL records. Each record needs a text field and character-offset spans containing `start`, `end`, and `label`.
-
-Split an annotated source file:
+Place an annotated CSV, JSON, or JSONL file under `data/`, then run:
 
 ```bash
 token-classification split-data \
   --input-file data/annotated_documents.jsonl \
   --output-dir data/splits \
   --seed 42 \
-  --stratify-by constrained_min_labels \
-  --min-label-presence 1
+  --stratify-by constrained_min_labels
 ```
 
-The example configurations expect:
+The example config expects `train.csv`, `validation.csv`, and `test.csv` under `data/splits/`.
 
-```text
-data/splits/train.csv
-data/splits/validation.csv
-data/splits/test.csv
-```
-
-Change those paths when using a different layout. See [Dataset Format](docs/dataset_format.md) for the schema and splitting options.
-
-## Validate Labels and Spans
-
-The model schema is derived from labels in the training split. Every label evaluated in validation or test should therefore also appear in training.
+### 3. Validate
 
 ```bash
+token-classification validate-config --config configs/train.example.yaml
 token-classification validate-data --config configs/train.example.yaml
 token-classification label-coverage --config configs/train.example.yaml
 ```
 
-## Train
-
-Copy or edit `configs/train.example.yaml` to choose the model, data paths, output directory, batch size, metadata columns, and other hyperparameters.
+### 4. Train
 
 ```bash
-token-classification validate-config --config configs/train.example.yaml
 token-classification train --config configs/train.example.yaml
 ```
 
-The example uses `fp16: false` for portability. Enable it only when supported by your hardware and PyTorch setup.
+Training artifacts are written under `outputs/training/` by default.
 
-## Tune Hyperparameters
+## Configure a Run
 
-Edit the base configuration and search space in `configs/sweeps/sweep.example.yaml`, then run:
+Edit [configs/train.example.yaml](configs/train.example.yaml) to change the model, data paths, batch size, metadata columns, or training parameters. The example uses `FacebookAI/xlm-roberta-base` and keeps `fp16` disabled for portability.
+
+The model schema is derived from the training split. Every label used in validation or test should therefore also occur in training. Span offsets must refer to the exact input text, with an inclusive `start` and exclusive `end`.
+
+This project targets flat token classification. Nested or overlapping entities, document classification, relation extraction, and text generation require different modeling approaches.
+
+## Sweeps and Prediction
+
+Run a local hyperparameter sweep:
 
 ```bash
 token-classification validate-sweep --config configs/sweeps/sweep.example.yaml
 token-classification sweep --config configs/sweeps/sweep.example.yaml
 ```
 
-Sweep trials are ranked using validation metrics and do not evaluate the test set. See [Hyperparameter Tuning](docs/hyperparameter_tuning.md).
-
-## Predict
-
-After training, run inference on a CSV file containing text:
+Run inference with a trained model:
 
 ```bash
 token-classification predict \
@@ -117,8 +74,15 @@ token-classification predict \
   --input-file data/prediction_input.csv
 ```
 
-See [Output Artifacts](docs/outputs.md) for generated files and [Development Notes](docs/development.md) for the package layout.
+## Further Documentation
+
+- [Dataset format and splitting](docs/dataset_format.md)
+- [Hyperparameter tuning](docs/hyperparameter_tuning.md)
+- [Output artifacts](docs/outputs.md)
+- [Development notes](docs/development.md)
+
+For specialized CUDA, ROCm, or XPU installations, install the appropriate build from the [PyTorch installation guide](https://pytorch.org/get-started/locally/) before installing this project.
 
 ## Data Handling
 
-The `data/` directory is ignored by Git apart from `data/README.md`. Do not force-add sensitive, confidential, or restrictively licensed data. Share data only through an approved storage and transfer process.
+Datasets, generated splits, checkpoints, and outputs are excluded from Git. Do not force-add sensitive, confidential, or restrictively licensed data.
