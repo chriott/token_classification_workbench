@@ -13,20 +13,20 @@ This project expects text with labeled character spans and converts those spans 
 ## Requirements
 
 - Python 3.10 or newer
-- A PyTorch installation suitable for your CPU, CUDA, or Apple Silicon setup
 - A fresh virtual environment
 
-Create an environment, install the appropriate PyTorch build for your machine, and install the workbench:
+Create a standard Python virtual environment and install the workbench:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-# Install PyTorch for your hardware: https://pytorch.org/get-started/locally/
 pip install -e ".[dev]"
 ```
 
-PyTorch is intentionally not declared as a project dependency because its correct build depends on the available hardware. The editable install provides the `token-classification` command. `python token_classifier.py` remains available as a repository-local launcher.
+This installs PyTorch and the other runtime and development dependencies. The editable install provides the `token-classification` command, while `python token_classifier.py` remains available as a repository-local launcher.
+
+The default PyTorch package is appropriate for most users. Someone who deliberately needs a specialized CUDA, ROCm, or XPU build can install the matching PyTorch build for their platform before installing this project; Pip will keep it when it satisfies the declared version requirement.
 
 Verify the installation:
 
