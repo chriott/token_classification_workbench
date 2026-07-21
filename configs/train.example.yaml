@@ -1,0 +1,28 @@
+model_name: FacebookAI/xlm-roberta-base
+output_dir: outputs/training
+run_name: baseline
+
+train_file: data/splits/train.csv
+validation_file: data/splits/validation.csv
+test_file: data/splits/test.csv
+text_column:
+spans_column: spans
+optional_string_columns: []
+
+max_length: 512
+train_learning_rate: 5.0e-5
+train_batch_size: 8
+train_epochs: 10
+train_weight_decay: 0.01
+gradient_accumulation_steps: 1
+warmup_ratio: 0.06
+
+logging_steps: 100
+dataloader_num_workers: 2
+fp16: false
+save_total_limit: 1
+primary_metric: eval_f1_macro
+report_target: none
+early_stopping_enabled: true
+early_stopping_patience: 3
+early_stopping_threshold: 0.001

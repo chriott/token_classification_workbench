@@ -1,0 +1,19 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.cache/
+
+outputs/
+checkpoints/
+wandb/
+
+# Training data and generated splits stay local. Keep only the documentation.
+data/*
+!data/README.md
+
+.DS_Store
