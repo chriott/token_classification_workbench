@@ -17,7 +17,7 @@ python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
-This installs PyTorch and provides the `token-classification` command. On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
+This installs PyTorch and provides the `token-classification` command.
 
 ### 2. Create data splits
 
@@ -27,7 +27,7 @@ Place an annotated CSV, JSON, or JSONL file under `data/`, then run:
 token-classification split-data \
   --input-file data/annotated_documents.jsonl \
   --output-dir data/splits \
-  --seed 42 \
+  --seed 25 \
   --stratify-by constrained_min_labels
 ```
 
@@ -55,8 +55,6 @@ Edit [configs/train.example.yaml](configs/train.example.yaml) to change the mode
 
 The model schema is derived from the training split. Every label used in validation or test should therefore also occur in training. Span offsets must refer to the exact input text, with an inclusive `start` and exclusive `end`.
 
-This project targets flat token classification. Nested or overlapping entities, document classification, relation extraction, and text generation require different modeling approaches.
-
 ## Sweeps and Prediction
 
 Run a local hyperparameter sweep:
@@ -80,9 +78,3 @@ token-classification predict \
 - [Hyperparameter tuning](docs/hyperparameter_tuning.md)
 - [Output artifacts](docs/outputs.md)
 - [Development notes](docs/development.md)
-
-For specialized CUDA, ROCm, or XPU installations, install the appropriate build from the [PyTorch installation guide](https://pytorch.org/get-started/locally/) before installing this project.
-
-## Data Handling
-
-Datasets, generated splits, checkpoints, and outputs are excluded from Git. Do not force-add sensitive, confidential, or restrictively licensed data.
