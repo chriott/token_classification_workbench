@@ -160,7 +160,11 @@ def run_pipeline(
     config: TrainingConfig,
     run_test_evaluation: bool = True,
     final_training_mode: bool = False,
+    save_model: bool = True,
 ) -> Path:
+    if run_test_evaluation and not save_model:
+        raise ValueError("save_model=False requires run_test_evaluation=False.")
+
     from transformers import AutoModelForTokenClassification, AutoTokenizer
     from transformers import DataCollatorForTokenClassification, EarlyStoppingCallback, TrainingArguments
 
@@ -211,8 +215,9 @@ def run_pipeline(
 
     print(f"\n=== Training run: {config.run_name} ===")
     trainer.train()
-    trainer.save_model(str(run_output_dir))
-    tokenizer.save_pretrained(str(run_output_dir))
+    if save_model:
+        trainer.save_model(str(run_output_dir))
+        tokenizer.save_pretrained(str(run_output_dir))
 
     validation_metrics = {}
     if evaluation_enabled:
@@ -245,7 +250,10 @@ def run_pipeline(
     write_json(run_output_dir / "run_summary.json", run_summary)
     persist_label_schema(schema, run_output_dir)
 
-    print("\nTraining completed. Saved model to", run_output_dir)
+    if save_model:
+        print("\nTraining completed. Saved model to", run_output_dir)
+    else:
+        print("\nTraining completed. Model artifacts were not retained.")
     print("Run hyperparameters:")
     print(json.dumps(run_summary["params"], indent=2))
 

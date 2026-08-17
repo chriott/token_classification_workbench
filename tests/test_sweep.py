@@ -151,12 +151,17 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
         },
     )
 
-    state = {"calls": 0}
+    state = {"calls": 0, "save_model_values": []}
 
-    def fake_run_pipeline(config, run_test_evaluation=False):
+    def fake_run_pipeline(config, run_test_evaluation=False, save_model=True):
         state["calls"] += 1
+        state["save_model_values"].append(save_model)
         run_dir = tmp_path / "outputs" / "demo_incremental" / config.run_name
         run_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_dir = run_dir / f"checkpoint-{state['calls']}"
+        checkpoint_dir.mkdir()
+        (checkpoint_dir / "model.safetensors").write_text("large model placeholder", encoding="utf-8")
+        (run_dir / "run-metadata.txt").write_text("retain me", encoding="utf-8")
         if state["calls"] == 2:
             raise RuntimeError("boom")
         write_json(
@@ -184,3 +189,7 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
     assert summary["completed_trials"] == 1
     assert summary["failed_trials"] == 1
     assert summary["best_trial"]["run_name"] == "trial_001"
+    assert state["save_model_values"] == [False, False]
+    assert not list(sweep_root.glob("trial_*/checkpoint-*"))
+    assert (sweep_root / "trial_001" / "run-metadata.txt").exists()
+    assert (sweep_root / "trial_002" / "run-metadata.txt").exists()

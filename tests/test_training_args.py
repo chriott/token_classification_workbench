@@ -3,9 +3,10 @@ from __future__ import annotations
 import sys
 import types
 from contextlib import contextmanager
+from inspect import signature
 
 from token_classification.config import TrainingConfig
-from token_classification.training import make_trainer, make_training_args
+from token_classification.training import make_trainer, make_training_args, run_pipeline
 
 
 @contextmanager
@@ -25,6 +26,19 @@ def test_training_config_has_no_domain_specific_metadata_defaults():
     config = TrainingConfig()
 
     assert config.optional_string_columns == ()
+
+
+def test_run_pipeline_saves_models_by_default():
+    assert signature(run_pipeline).parameters["save_model"].default is True
+
+
+def test_run_pipeline_rejects_test_evaluation_without_a_saved_model():
+    try:
+        run_pipeline(TrainingConfig(), run_test_evaluation=True, save_model=False)
+    except ValueError as exc:
+        assert "requires run_test_evaluation=False" in str(exc)
+    else:
+        raise AssertionError("Expected model-free test evaluation to raise ValueError.")
 
 
 def test_make_training_args_accepts_eval_strategy_alias():

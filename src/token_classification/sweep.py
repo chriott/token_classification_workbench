@@ -5,6 +5,7 @@ import itertools
 import json
 import math
 import random
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +83,13 @@ def score_for_sorting(metric_value: float | None, objective_mode: str) -> float:
 def load_json(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def remove_trial_checkpoints(run_output_dir: str | Path) -> None:
+    run_output_dir = Path(run_output_dir)
+    for checkpoint_dir in run_output_dir.glob("checkpoint-*"):
+        if checkpoint_dir.is_dir():
+            shutil.rmtree(checkpoint_dir)
 
 
 def write_leaderboard_csv(path: str | Path, trial_rows: list[dict[str, Any]]) -> Path:
@@ -185,6 +193,7 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
     trial_results: list[dict[str, Any]] = []
     for trial_number, overrides in enumerate(planned_overrides, start=1):
         run_name = f"trial_{trial_number:03d}"
+        trial_output_dir = sweep_root / run_name
         trial_config = sweep_config.base_config.with_overrides(
             **overrides,
             output_dir=str(sweep_root),
@@ -196,7 +205,11 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
 
         trial_config_path = dump_config_yaml(sweep_root / f"{run_name}_config.yaml", trial_config)
         try:
-            run_output_dir = run_pipeline(trial_config, run_test_evaluation=False)
+            run_output_dir = run_pipeline(
+                trial_config,
+                run_test_evaluation=False,
+                save_model=False,
+            )
             run_summary = load_json(run_output_dir / "run_summary.json")
             validation_metrics = run_summary.get("validation_metrics", {})
             objective_value = validation_metrics.get(objective_metric)
@@ -230,6 +243,8 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
                 }
             )
             print(f"Trial {run_name} failed: {exc}")
+        finally:
+            remove_trial_checkpoints(trial_output_dir)
         persist_sweep_state(
             sweep_config=sweep_config,
             sweep_root=sweep_root,
