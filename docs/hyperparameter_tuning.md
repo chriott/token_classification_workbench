@@ -52,6 +52,8 @@ Each sweep writes to `outputs/sweeps/<name>/`. Important artifacts include:
 - `summary.json`
 - `leaderboard.csv`
 - `best_config.yaml`
-- per-trial configs and model-output directories
+- per-trial configs and metric-output directories
 
 Trials are ranked only on validation metrics and intentionally skip test evaluation. Use the test split once, after selecting the final configuration.
+Checkpoints are used temporarily for early stopping and restoring each trial's best epoch, then deleted after the trial finishes.
+Sweep trials do not retain model weights; run `final-train` with `best_config.yaml` to train and save the selected model.
