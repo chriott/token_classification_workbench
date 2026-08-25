@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from token_classification.evaluation import classify_span_sets, save_test_predictions
+from token_classification.evaluation import classify_span_sets, compute_micro_macro, save_test_predictions
 from token_classification.labels import LabelSchema, bio_to_entities, bio_to_spans
 
 
@@ -22,6 +22,46 @@ class FakeDataset:
         if isinstance(key, str):
             return [row[key] for row in self.rows]
         return self.rows[key]
+
+
+def test_compute_micro_macro_includes_macro_precision_and_recall():
+    rows = [
+        {
+            "correct": 8,
+            "missed": 2,
+            "spurious": 2,
+            "precision": 0.8,
+            "recall": 0.8,
+            "f1": 0.8,
+        },
+        {
+            "correct": 1,
+            "missed": 3,
+            "spurious": 0,
+            "precision": 1.0,
+            "recall": 0.25,
+            "f1": 0.4,
+        },
+    ]
+
+    rollup = compute_micro_macro(rows)
+
+    assert rollup == {
+        "micro": {
+            "precision": 9 / 11,
+            "recall": 9 / 14,
+            "f1": 2 * (9 / 11) * (9 / 14) / ((9 / 11) + (9 / 14)),
+            "true_positives": 9,
+            "false_positives": 2,
+            "false_negatives": 5,
+        },
+        "macro": {
+            "precision": 0.9,
+            "recall": 0.525,
+            "f1": (0.8 + 0.4) / 2,
+            "label_count": 2,
+        },
+    }
 
 
 def test_bio_to_spans_groups_adjacent_i_tags():

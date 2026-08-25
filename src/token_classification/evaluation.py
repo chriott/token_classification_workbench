@@ -9,6 +9,42 @@ from .labels import LabelSchema, bio_to_entities, bio_to_spans
 from .utils import write_json
 
 
+def compute_micro_macro(rows: List[Dict[str, object]]):
+    if not rows:
+        return None
+    totals = {key: 0 for key in ("correct", "missed", "spurious")}
+    for row in rows:
+        totals["correct"] += row["correct"]
+        totals["missed"] += row["missed"]
+        totals["spurious"] += row["spurious"]
+    true_positives = totals["correct"]
+    false_positives = totals["spurious"]
+    false_negatives = totals["missed"]
+    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) else 0.0
+    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+    label_count = len(rows)
+    macro_precision = sum(float(row["precision"]) for row in rows) / label_count
+    macro_recall = sum(float(row["recall"]) for row in rows) / label_count
+    macro_f1 = sum(float(row["f1"]) for row in rows) / label_count
+    return {
+        "micro": {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "true_positives": true_positives,
+            "false_positives": false_positives,
+            "false_negatives": false_negatives,
+        },
+        "macro": {
+            "precision": macro_precision,
+            "recall": macro_recall,
+            "f1": macro_f1,
+            "label_count": label_count,
+        },
+    }
+
+
 def build_compute_metrics_fn(schema: LabelSchema):
     import numpy as np
     from seqeval.metrics import accuracy_score, f1_score, precision_score, recall_score
@@ -264,36 +300,6 @@ def evaluate_with_nervaluate(
                 }
             )
         return rows
-
-    def compute_micro_macro(rows: List[Dict[str, object]]):
-        if not rows:
-            return None
-        totals = {key: 0 for key in ("correct", "missed", "spurious")}
-        for row in rows:
-            totals["correct"] += row["correct"]
-            totals["missed"] += row["missed"]
-            totals["spurious"] += row["spurious"]
-        true_positives = totals["correct"]
-        false_positives = totals["spurious"]
-        false_negatives = totals["missed"]
-        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) else 0.0
-        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) else 0.0
-        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
-        macro_f1 = sum(row["f1"] for row in rows) / len(rows)
-        return {
-            "micro": {
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-            },
-            "macro": {
-                "f1": macro_f1,
-                "label_count": len(rows),
-            },
-        }
 
     rollups: Dict[str, Dict[str, object]] = {}
     for scenario in ("ent_type", "partial"):
