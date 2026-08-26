@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import SweepConfig, TrainingConfig
 from .data_validation import save_validation_summary, validate_dataset_splits
 from .label_coverage import build_label_coverage_report, save_label_coverage_report
+from .multi_seed import run_multi_seed_final_training
 from .prediction import run_prediction
 from .split_data import split_input_data
 from .sweep import run_sweep
@@ -28,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Train on final training data without validation and evaluate once on the test split.",
     )
     final_train_parser.add_argument("--config", required=True, help="Path to a YAML config file.")
+    final_train_parser.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        help="Run final training once per explicit seed and aggregate nervaluate results.",
+    )
 
     validate_parser = subparsers.add_parser("validate-config", help="Validate and print a config file.")
     validate_parser.add_argument("--config", required=True, help="Path to a YAML config file.")
@@ -164,7 +171,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "final-train":
         config = TrainingConfig.from_yaml(args.config)
         config.validate(require_validation=False)
-        run_pipeline(config, final_training_mode=True)
+        if args.seeds:
+            run_multi_seed_final_training(config, args.seeds)
+        else:
+            run_pipeline(config, final_training_mode=True)
         return 0
 
     if args.command == "validate-data":

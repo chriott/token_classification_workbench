@@ -27,6 +27,12 @@ def instantiate_model(config: TrainingConfig, schema: LabelSchema):
     )
 
 
+def seed_training_run(seed: int) -> None:
+    from transformers import set_seed
+
+    set_seed(seed)
+
+
 def make_training_args(config: TrainingConfig, run_output_dir: str | Path, evaluation_enabled: bool):
     from transformers import TrainingArguments
 
@@ -193,6 +199,7 @@ def run_pipeline(
 
     evaluation_enabled = not final_training_mode and validation_dataset is not None and len(validation_dataset) > 0
     training_args = make_training_args(config, run_output_dir, evaluation_enabled=evaluation_enabled)
+    seed_training_run(config.split_seed)
     model = instantiate_model(config, schema)
     callbacks = []
     if config.early_stopping_enabled and evaluation_enabled:

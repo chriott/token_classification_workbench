@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from inspect import signature
 
 from token_classification.config import TrainingConfig
-from token_classification.training import make_trainer, make_training_args, run_pipeline
+from token_classification.training import make_trainer, make_training_args, run_pipeline, seed_training_run
 
 
 @contextmanager
@@ -39,6 +39,16 @@ def test_run_pipeline_rejects_test_evaluation_without_a_saved_model():
         assert "requires run_test_evaluation=False" in str(exc)
     else:
         raise AssertionError("Expected model-free test evaluation to raise ValueError.")
+
+
+def test_seed_training_run_uses_transformers_seed_before_model_creation():
+    captured = []
+    fake_module = types.SimpleNamespace(set_seed=captured.append)
+
+    with patched_transformers_module(fake_module):
+        seed_training_run(123)
+
+    assert captured == [123]
 
 
 def test_make_training_args_accepts_eval_strategy_alias():

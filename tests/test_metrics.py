@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from token_classification.evaluation import classify_span_sets, compute_micro_macro, save_test_predictions
+from token_classification.evaluation import (
+    classify_span_sets,
+    compute_micro_macro,
+    evaluate_with_nervaluate,
+    save_test_predictions,
+)
 from token_classification.labels import LabelSchema, bio_to_entities, bio_to_spans
 
 
@@ -25,35 +30,31 @@ class FakeDataset:
 
 
 def test_compute_micro_macro_includes_macro_precision_and_recall():
+    overall = {
+        "correct": 9,
+        "incorrect": 1,
+        "partial": 2,
+        "missed": 3,
+        "spurious": 1,
+        "actual": 13,
+        "possible": 15,
+        "precision": 10 / 13,
+        "recall": 10 / 15,
+        "f1": 2 * (10 / 13) * (10 / 15) / ((10 / 13) + (10 / 15)),
+    }
     rows = [
-        {
-            "correct": 8,
-            "missed": 2,
-            "spurious": 2,
-            "precision": 0.8,
-            "recall": 0.8,
-            "f1": 0.8,
-        },
-        {
-            "correct": 1,
-            "missed": 3,
-            "spurious": 0,
-            "precision": 1.0,
-            "recall": 0.25,
-            "f1": 0.4,
-        },
+        {"precision": 0.8, "recall": 0.8, "f1": 0.8},
+        {"precision": 1.0, "recall": 0.25, "f1": 0.4},
     ]
 
-    rollup = compute_micro_macro(rows)
+    rollup = compute_micro_macro("partial", overall, rows)
 
     assert rollup == {
         "micro": {
-            "precision": 9 / 11,
-            "recall": 9 / 14,
-            "f1": 2 * (9 / 11) * (9 / 14) / ((9 / 11) + (9 / 14)),
-            "true_positives": 9,
-            "false_positives": 2,
-            "false_negatives": 5,
+            **overall,
+            "true_positives": 10.0,
+            "false_positives": 3.0,
+            "false_negatives": 5.0,
         },
         "macro": {
             "precision": 0.9,
@@ -62,6 +63,34 @@ def test_compute_micro_macro_includes_macro_precision_and_recall():
             "label_count": 2,
         },
     }
+
+
+def test_evaluate_with_nervaluate_uses_direct_partial_credit(tmp_path):
+    trainer = SimpleNamespace(
+        predict=lambda _dataset: SimpleNamespace(
+            predictions=np.array([[[0.0, 10.0, 0.0], [10.0, 0.0, 0.0]]]),
+            label_ids=np.array([[1, 2]]),
+            metrics={"test_loss": 0.1},
+        )
+    )
+
+    result = evaluate_with_nervaluate(
+        trainer,
+        tokenized_dataset=object(),
+        records=[{"token_spans": [(0, 4), (4, 8)]}],
+        id_to_label={0: "O", 1: "B-PERSON", 2: "I-PERSON"},
+        label_to_id={"O": 0, "B-PERSON": 1, "I-PERSON": 2},
+        output_dir=tmp_path,
+        suffix="test",
+    )["nervaluate"]
+
+    partial = result["rollups"]["partial"]["overall"]
+    assert partial["micro"]["f1"] == 0.5
+    assert partial["micro"]["true_positives"] == 0.5
+    assert partial["micro"]["false_positives"] == 0.5
+    assert partial["micro"]["false_negatives"] == 0.5
+    assert partial["macro"]["f1"] == 0.5
+    assert result["per_tag_results"]["PERSON"]["gold_support"] == 1
 
 
 def test_bio_to_spans_groups_adjacent_i_tags():

@@ -2,44 +2,56 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Mapping, Sequence
 
 from .labels import LabelSchema, bio_to_entities, bio_to_spans
 from .utils import write_json
 
 
-def compute_micro_macro(rows: List[Dict[str, object]]):
-    if not rows:
+NERVALUATE_SCENARIOS = ("strict", "ent_type", "partial")
+
+
+def evaluation_result_to_dict(result) -> Dict[str, int | float]:
+    return {
+        "correct": int(result.correct),
+        "incorrect": int(result.incorrect),
+        "partial": int(result.partial),
+        "missed": int(result.missed),
+        "spurious": int(result.spurious),
+        "actual": int(result.actual),
+        "possible": int(result.possible),
+        "precision": float(result.precision),
+        "recall": float(result.recall),
+        "f1": float(result.f1),
+    }
+
+
+def compute_micro_macro(
+    scenario: str,
+    overall_result: Mapping[str, int | float],
+    per_label_results: Sequence[Mapping[str, int | float]],
+):
+    if not per_label_results:
         return None
-    totals = {key: 0 for key in ("correct", "missed", "spurious")}
-    for row in rows:
-        totals["correct"] += row["correct"]
-        totals["missed"] += row["missed"]
-        totals["spurious"] += row["spurious"]
-    true_positives = totals["correct"]
-    false_positives = totals["spurious"]
-    false_negatives = totals["missed"]
-    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) else 0.0
-    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) else 0.0
-    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
-    label_count = len(rows)
-    macro_precision = sum(float(row["precision"]) for row in rows) / label_count
-    macro_recall = sum(float(row["recall"]) for row in rows) / label_count
-    macro_f1 = sum(float(row["f1"]) for row in rows) / label_count
+
+    partial_credit = 0.5 * float(overall_result["partial"]) if scenario in {"ent_type", "partial"} else 0.0
+    true_positives = float(overall_result["correct"]) + partial_credit
+    false_positives = float(overall_result["actual"]) - true_positives
+    false_negatives = float(overall_result["possible"]) - true_positives
+    label_count = len(per_label_results)
     return {
         "micro": {
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
+            **overall_result,
             "true_positives": true_positives,
             "false_positives": false_positives,
             "false_negatives": false_negatives,
         },
         "macro": {
-            "precision": macro_precision,
-            "recall": macro_recall,
-            "f1": macro_f1,
+            "precision": sum(float(row["precision"]) for row in per_label_results) / label_count,
+            "recall": sum(float(row["recall"]) for row in per_label_results) / label_count,
+            "f1": sum(float(row["f1"]) for row in per_label_results) / label_count,
             "label_count": label_count,
         },
     }
@@ -262,11 +274,12 @@ def evaluate_with_nervaluate(
     )
 
     evaluator = Evaluator(gold_entities, predicted_entities, tags=entity_tags, loader="dict")
+    evaluated = evaluator.evaluate()
     summary_lines = evaluator.summary_report().strip().splitlines()
 
     per_tag_sections: Dict[str, List[str]] = {}
     per_tag_lines: List[str] = []
-    for scenario in ("strict", "ent_type", "partial"):
+    for scenario in NERVALUATE_SCENARIOS:
         scenario_report = evaluator.summary_report(mode="entities", scenario=scenario)
         lines = scenario_report.strip().splitlines()
         per_tag_sections[scenario] = lines
@@ -274,51 +287,45 @@ def evaluate_with_nervaluate(
             per_tag_lines.append("")
         per_tag_lines.extend(lines)
 
-    def parse_per_tag_rows(lines: List[str]) -> List[Dict[str, object]]:
-        rows = []
-        for line in lines:
-            parts = line.strip().split()
-            if len(parts) < 9:
-                continue
-            label = parts[0]
-            try:
-                correct, incorrect, partial, missed, spurious = [int(parts[index]) for index in range(1, 6)]
-                precision, recall, f1 = [float(parts[index]) for index in range(6, 9)]
-            except ValueError:
-                continue
-            rows.append(
-                {
-                    "label": label,
-                    "correct": correct,
-                    "incorrect": incorrect,
-                    "partial": partial,
-                    "missed": missed,
-                    "spurious": spurious,
-                    "precision": precision,
-                    "recall": recall,
-                    "f1": f1,
-                }
-            )
-        return rows
+    gold_support = Counter(entity["label"] for document in gold_entities for entity in document)
+    per_tag_results: Dict[str, Dict[str, object]] = {}
+    for label in entity_tags:
+        scenario_results: Dict[str, object] = {}
+        raw_label_results = evaluated["entities"].get(label, {})
+        for scenario in NERVALUATE_SCENARIOS:
+            raw_result = raw_label_results.get(scenario)
+            scenario_results[scenario] = evaluation_result_to_dict(raw_result) if raw_result is not None else None
+        per_tag_results[label] = {
+            "gold_support": int(gold_support.get(label, 0)),
+            "evaluable": gold_support.get(label, 0) > 0,
+            "scenarios": scenario_results,
+        }
 
+    evaluable_labels = [label for label in entity_tags if gold_support.get(label, 0) > 0]
     rollups: Dict[str, Dict[str, object]] = {}
-    for scenario in ("ent_type", "partial"):
-        rows = parse_per_tag_rows(per_tag_sections.get(scenario, []))
-        if not rows:
+    for scenario in NERVALUATE_SCENARIOS:
+        overall_raw_result = evaluated["overall"].get(scenario)
+        if overall_raw_result is None:
             continue
-        groups = {"overall": rows}
-        scenario_rollups: Dict[str, object] = {}
-        for group_name, group_rows in groups.items():
-            metrics_rollup = compute_micro_macro(group_rows)
-            if metrics_rollup is not None:
-                scenario_rollups[group_name] = metrics_rollup
-        if scenario_rollups:
-            rollups[scenario] = scenario_rollups
+        label_results = [
+            per_tag_results[label]["scenarios"][scenario]
+            for label in evaluable_labels
+            if per_tag_results[label]["scenarios"][scenario] is not None
+        ]
+        metrics_rollup = compute_micro_macro(
+            scenario,
+            evaluation_result_to_dict(overall_raw_result),
+            label_results,
+        )
+        if metrics_rollup is not None:
+            rollups[scenario] = {"overall": metrics_rollup}
 
     nervaluate_output = {
         "summary_lines": summary_lines,
         "per_tag_lines": per_tag_lines,
         "per_tag_sections": per_tag_sections,
+        "labels": entity_tags,
+        "per_tag_results": per_tag_results,
         "rollups": rollups,
     }
 

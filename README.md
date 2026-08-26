@@ -57,6 +57,22 @@ token-classification train --config configs/train.example.yaml
 
 Training artifacts are written under `outputs/training/` by default.
 
+After choosing hyperparameters, final training merges the configured training and validation splits and evaluates the
+untouched test split. Run it once with the config seed:
+
+```bash
+token-classification final-train --config configs/train.example.yaml
+```
+
+To measure training variability, provide explicit seeds. Each run is trained and evaluated independently, then the
+nervaluate metrics are aggregated with their mean and sample standard deviation:
+
+```bash
+token-classification final-train \
+  --config configs/train.example.yaml \
+  --seeds 25 26 27 28 29
+```
+
 ## Modeling Scope
 
 The model schema is derived from the training split. Every label used in validation or test should therefore also occur in training. Span offsets must refer to the exact input text, with an inclusive `start` and exclusive `end`.

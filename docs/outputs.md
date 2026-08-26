@@ -59,3 +59,29 @@ These come from the `predict` CLI command and do not require gold labels in the 
 - `nervaluate_test.txt`
 
 These contain strict, entity-type, and partial-match summaries, overall micro/macro rollups, and per-label results for every label discovered in the training data.
+
+The JSON metrics are read directly from nervaluate's structured evaluation results; the text report is retained for
+human inspection. Labels without gold examples in the test split are marked as not evaluable and are excluded from
+macro averaging.
+
+## Multi-Seed Final Training
+
+Running `final-train` with `--seeds` creates one complete run directory per seed and an aggregate directory:
+
+```text
+<output_dir>/<run_name>/
+├── seed_42/
+├── seed_43/
+├── seed_44/
+├── seed_45/
+├── seed_46/
+└── aggregate/
+    ├── run_manifest.json
+    ├── nervaluate_multi_seed.json
+    ├── nervaluate_multi_seed.csv
+    └── nervaluate_multi_seed.txt
+```
+
+Aggregation is kept separate for strict, entity-type, and partial matching. It reports the mean and sample standard
+deviation (`n - 1`) of precision, recall, and F1 for overall micro, overall macro, and every evaluable label. Raw values
+are retained by seed. Labels with no gold test examples are listed as not evaluable rather than assigned an F1 of zero.

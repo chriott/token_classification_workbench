@@ -22,6 +22,17 @@ def test_cli_parses_final_train_command():
 
     assert args.command == "final-train"
     assert args.config == "configs/example.yaml"
+    assert args.seeds is None
+
+
+def test_cli_parses_multi_seed_final_train_command():
+    parser = build_parser()
+
+    args = parser.parse_args(
+        ["final-train", "--config", "configs/example.yaml", "--seeds", "25", "26", "27"]
+    )
+
+    assert args.seeds == [25, 26, 27]
 
 
 def test_final_training_mode_merges_train_and_validation_in_memory():
