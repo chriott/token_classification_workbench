@@ -35,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="Run final training once per explicit seed and aggregate nervaluate results.",
     )
+    final_train_parser.add_argument(
+        "--retain-seed",
+        type=int,
+        help="Seed whose trained model is retained; defaults to the first value passed to --seeds.",
+    )
 
     validate_parser = subparsers.add_parser("validate-config", help="Validate and print a config file.")
     validate_parser.add_argument("--config", required=True, help="Path to a YAML config file.")
@@ -172,7 +177,9 @@ def main(argv: list[str] | None = None) -> int:
         config = TrainingConfig.from_yaml(args.config)
         config.validate(require_validation=False)
         if args.seeds:
-            run_multi_seed_final_training(config, args.seeds)
+            run_multi_seed_final_training(config, args.seeds, retain_seed=args.retain_seed)
+        elif args.retain_seed is not None:
+            parser.error("--retain-seed requires --seeds.")
         else:
             run_pipeline(config, final_training_mode=True)
         return 0

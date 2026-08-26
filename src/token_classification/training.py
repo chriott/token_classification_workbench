@@ -167,10 +167,8 @@ def run_pipeline(
     run_test_evaluation: bool = True,
     final_training_mode: bool = False,
     save_model: bool = True,
+    write_validation_nervaluate: bool = False,
 ) -> Path:
-    if run_test_evaluation and not save_model:
-        raise ValueError("save_model=False requires run_test_evaluation=False.")
-
     from transformers import AutoModelForTokenClassification, AutoTokenizer
     from transformers import DataCollatorForTokenClassification, EarlyStoppingCallback, TrainingArguments
 
@@ -231,6 +229,17 @@ def run_pipeline(
         validation_metrics = {key: float(value) for key, value in trainer.evaluate(validation_dataset).items()}
         print("\nValidation metrics:")
         print(json.dumps(validation_metrics, indent=2))
+        if write_validation_nervaluate:
+            validation_nervaluate_dir = run_output_dir / "nervaluate"
+            evaluate_with_nervaluate(
+                trainer,
+                validation_dataset,
+                build_test_records(tokenized_dataset["validation"]),
+                schema.id_to_label,
+                schema.label_to_id,
+                validation_nervaluate_dir,
+                suffix="validation",
+            )
     elif final_training_mode:
         print("\nFinal training mode: skipped validation during training and will evaluate on test only.")
 
@@ -253,6 +262,9 @@ def run_pipeline(
             "early_stopping_threshold": config.early_stopping_threshold,
         },
         "validation_metrics": validation_metrics,
+        "best_metric": float(trainer.state.best_metric) if trainer.state.best_metric is not None else None,
+        "best_model_checkpoint": trainer.state.best_model_checkpoint,
+        "completed_epoch": float(trainer.state.epoch) if trainer.state.epoch is not None else None,
     }
     write_json(run_output_dir / "run_summary.json", run_summary)
     persist_label_schema(schema, run_output_dir)
@@ -268,21 +280,24 @@ def run_pipeline(
         print("\nSkipping test-set evaluation for this run.")
         return run_output_dir
 
-    test_args = TrainingArguments(
-        output_dir=str(run_output_dir / "test_eval"),
-        per_device_eval_batch_size=config.train_batch_size,
-        dataloader_num_workers=config.dataloader_num_workers,
-        report_to="none",
-    )
-    best_model = AutoModelForTokenClassification.from_pretrained(str(run_output_dir))
-    best_trainer = make_trainer(
-        model=best_model,
-        args=test_args,
-        eval_dataset=test_dataset,
-        tokenizer=tokenizer,
-        data_collator=DataCollatorForTokenClassification(tokenizer),
-        compute_metrics=compute_metrics_fn,
-    )
+    if save_model:
+        test_args = TrainingArguments(
+            output_dir=str(run_output_dir / "test_eval"),
+            per_device_eval_batch_size=config.train_batch_size,
+            dataloader_num_workers=config.dataloader_num_workers,
+            report_to="none",
+        )
+        best_model = AutoModelForTokenClassification.from_pretrained(str(run_output_dir))
+        best_trainer = make_trainer(
+            model=best_model,
+            args=test_args,
+            eval_dataset=test_dataset,
+            tokenizer=tokenizer,
+            data_collator=DataCollatorForTokenClassification(tokenizer),
+            compute_metrics=compute_metrics_fn,
+        )
+    else:
+        best_trainer = trainer
 
     test_metrics = {key: float(value) for key, value in best_trainer.evaluate(test_dataset).items()}
     print("\nTest metrics:")

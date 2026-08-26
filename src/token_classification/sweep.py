@@ -5,13 +5,14 @@ import itertools
 import json
 import math
 import random
-import shutil
+import statistics
 from pathlib import Path
 from typing import Any
 
 from .config import SweepConfig, SweepParameter, dump_config_yaml, dump_yaml_mapping
+from .cross_validation import aggregate_fold_nervaluate_results, prepare_cross_validation_folds
 from .training import run_pipeline
-from .utils import ensure_directory, write_json
+from .utils import ensure_directory, remove_checkpoint_directories, remove_model_weight_files, write_json
 
 
 def cast_sampled_value(parameter: SweepParameter, value: Any) -> Any:
@@ -85,11 +86,7 @@ def load_json(path: str | Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def remove_trial_checkpoints(run_output_dir: str | Path) -> None:
-    run_output_dir = Path(run_output_dir)
-    for checkpoint_dir in run_output_dir.glob("checkpoint-*"):
-        if checkpoint_dir.is_dir():
-            shutil.rmtree(checkpoint_dir)
+remove_trial_checkpoints = remove_checkpoint_directories
 
 
 def write_leaderboard_csv(path: str | Path, trial_rows: list[dict[str, Any]]) -> Path:
@@ -102,6 +99,10 @@ def write_leaderboard_csv(path: str | Path, trial_rows: list[dict[str, Any]]) ->
         "status",
         "objective_metric",
         "objective_value",
+        "objective_std",
+        "objective_min",
+        "objective_max",
+        "completed_folds",
         "run_output_dir",
         "overrides_json",
         "error",
@@ -140,6 +141,10 @@ def persist_sweep_state(
                 "status": row["status"],
                 "objective_metric": row["objective_metric"],
                 "objective_value": row["objective_value"],
+                "objective_std": row.get("objective_std", ""),
+                "objective_min": row.get("objective_min", ""),
+                "objective_max": row.get("objective_max", ""),
+                "completed_folds": row.get("completed_folds", ""),
                 "run_output_dir": row["run_output_dir"],
                 "overrides_json": json.dumps(row["overrides"], sort_keys=True),
                 "error": row["error"] or "",
@@ -180,6 +185,13 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
 
     sweep_root = ensure_directory(Path(sweep_config.output_dir) / sweep_config.name)
     dump_yaml_mapping(sweep_root / "sweep_config_used.yaml", sweep_config.to_dict())
+    fold_specs = None
+    if sweep_config.cross_validation is not None:
+        fold_specs = prepare_cross_validation_folds(
+            sweep_config.base_config,
+            sweep_config.cross_validation,
+            sweep_root / "folds",
+        )
 
     if sweep_config.search_strategy == "grid":
         planned_overrides = enumerate_grid_trial_overrides(sweep_config)
@@ -205,14 +217,86 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
 
         trial_config_path = dump_config_yaml(sweep_root / f"{run_name}_config.yaml", trial_config)
         try:
-            run_output_dir = run_pipeline(
-                trial_config,
-                run_test_evaluation=False,
-                save_model=False,
-            )
-            run_summary = load_json(run_output_dir / "run_summary.json")
-            validation_metrics = run_summary.get("validation_metrics", {})
-            objective_value = validation_metrics.get(objective_metric)
+            if fold_specs is None:
+                run_output_dir = run_pipeline(
+                    trial_config,
+                    run_test_evaluation=False,
+                    save_model=False,
+                )
+                run_summary = load_json(run_output_dir / "run_summary.json")
+                validation_metrics = run_summary.get("validation_metrics", {})
+                objective_value = validation_metrics.get(objective_metric)
+                objective_std = None
+                objective_min = objective_value
+                objective_max = objective_value
+                completed_folds = None
+            else:
+                fold_rows = []
+                nervaluate_by_fold = {}
+                for fold in fold_specs:
+                    fold_run_name = f"fold_{fold.index}"
+                    fold_output_dir = trial_output_dir / fold_run_name
+                    fold_config = trial_config.with_overrides(
+                        output_dir=str(trial_output_dir),
+                        run_name=fold_run_name,
+                        train_file=fold.train_files,
+                        validation_file=fold.validation_file,
+                        split_seed=sweep_config.cross_validation.seed + fold.index,
+                    )
+                    try:
+                        run_output_dir = run_pipeline(
+                            fold_config,
+                            run_test_evaluation=False,
+                            save_model=False,
+                            write_validation_nervaluate=True,
+                        )
+                        fold_summary = load_json(run_output_dir / "run_summary.json")
+                        fold_metrics = fold_summary.get("validation_metrics", {})
+                        fold_objective = fold_metrics.get(objective_metric)
+                        if fold_objective is None:
+                            raise ValueError(
+                                f"Objective metric '{objective_metric}' was not produced for fold {fold.index}."
+                            )
+                        fold_rows.append(
+                            {
+                                "fold": fold.index,
+                                "objective_value": float(fold_objective),
+                                "validation_metrics": fold_metrics,
+                                "completed_epoch": fold_summary.get("completed_epoch"),
+                                "best_metric": fold_summary.get("best_metric"),
+                            }
+                        )
+                        nervaluate_by_fold[fold.index] = load_json(
+                            run_output_dir / "nervaluate" / "nervaluate_validation.json"
+                        )
+                    finally:
+                        remove_trial_checkpoints(fold_output_dir)
+                        remove_model_weight_files(fold_output_dir)
+
+                objective_values = [row["objective_value"] for row in fold_rows]
+                objective_value = statistics.mean(objective_values)
+                objective_std = statistics.stdev(objective_values) if len(objective_values) > 1 else 0.0
+                objective_min = min(objective_values)
+                objective_max = max(objective_values)
+                completed_folds = len(fold_rows)
+                validation_metric_names = set.intersection(
+                    *(set(row["validation_metrics"]) for row in fold_rows)
+                )
+                validation_metrics = {
+                    metric: statistics.mean(float(row["validation_metrics"][metric]) for row in fold_rows)
+                    for metric in sorted(validation_metric_names)
+                }
+                cross_validation_summary = {
+                    "objective_metric": objective_metric,
+                    "objective_mean": objective_value,
+                    "objective_std": objective_std,
+                    "objective_min": objective_min,
+                    "objective_max": objective_max,
+                    "folds": fold_rows,
+                    "nervaluate": aggregate_fold_nervaluate_results(nervaluate_by_fold),
+                }
+                write_json(trial_output_dir / "trial_summary.json", cross_validation_summary)
+                run_output_dir = trial_output_dir
             trial_results.append(
                 {
                     "trial_number": trial_number,
@@ -220,6 +304,10 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
                     "status": "completed",
                     "objective_metric": objective_metric,
                     "objective_value": objective_value,
+                    "objective_std": objective_std,
+                    "objective_min": objective_min,
+                    "objective_max": objective_max,
+                    "completed_folds": completed_folds,
                     "run_output_dir": str(run_output_dir),
                     "config_path": str(trial_config_path),
                     "overrides": overrides,
@@ -235,6 +323,10 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
                     "status": "failed",
                     "objective_metric": objective_metric,
                     "objective_value": None,
+                    "objective_std": None,
+                    "objective_min": None,
+                    "objective_max": None,
+                    "completed_folds": 0 if fold_specs is not None else None,
                     "run_output_dir": str(sweep_root / run_name),
                     "config_path": str(trial_config_path),
                     "overrides": overrides,
@@ -245,6 +337,7 @@ def run_sweep(sweep_config: SweepConfig) -> Path:
             print(f"Trial {run_name} failed: {exc}")
         finally:
             remove_trial_checkpoints(trial_output_dir)
+            remove_model_weight_files(trial_output_dir)
         persist_sweep_state(
             sweep_config=sweep_config,
             sweep_root=sweep_root,

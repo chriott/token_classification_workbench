@@ -7,6 +7,7 @@ import numpy as np
 from token_classification.evaluation import (
     classify_span_sets,
     compute_micro_macro,
+    compute_nervaluate_metrics,
     evaluate_with_nervaluate,
     save_test_predictions,
 )
@@ -91,6 +92,19 @@ def test_evaluate_with_nervaluate_uses_direct_partial_credit(tmp_path):
     assert partial["micro"]["false_negatives"] == 0.5
     assert partial["macro"]["f1"] == 0.5
     assert result["per_tag_results"]["PERSON"]["gold_support"] == 1
+
+
+def test_compute_nervaluate_metrics_exposes_validation_objective_names():
+    metrics = compute_nervaluate_metrics(
+        [["B-PERSON", "I-PERSON"]],
+        [["B-PERSON", "O"]],
+        ["PERSON"],
+    )
+
+    assert metrics["nervaluate_partial_micro_f1"] == 0.5
+    assert metrics["nervaluate_partial_macro_f1"] == 0.5
+    assert "nervaluate_strict_micro_f1" in metrics
+    assert "nervaluate_ent_type_macro_f1" in metrics
 
 
 def test_bio_to_spans_groups_adjacent_i_tags():

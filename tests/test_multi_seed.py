@@ -59,11 +59,15 @@ def test_aggregate_nervaluate_results_calculates_sample_standard_deviation():
 def test_run_multi_seed_final_training_isolates_runs_and_writes_aggregate(tmp_path):
     config = TrainingConfig(output_dir=str(tmp_path), run_name="experiment")
     seen_configs = []
+    save_model_values = []
 
-    def fake_pipeline_runner(seed_config, *, final_training_mode):
+    def fake_pipeline_runner(seed_config, *, final_training_mode, save_model):
         assert final_training_mode is True
         seen_configs.append(seed_config)
+        save_model_values.append(save_model)
         run_dir = Path(seed_config.output_dir) / seed_config.run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "model.safetensors").write_text("weights", encoding="utf-8")
         write_json(
             run_dir / "nervaluate" / "nervaluate_test.json",
             make_nervaluate_result(seed_config.split_seed),
@@ -79,6 +83,9 @@ def test_run_multi_seed_final_training_isolates_runs_and_writes_aggregate(tmp_pa
     assert experiment_dir == tmp_path / "experiment"
     assert [item.split_seed for item in seen_configs] == [10, 12]
     assert [item.run_name for item in seen_configs] == ["seed_10", "seed_12"]
+    assert save_model_values == [True, False]
+    assert (experiment_dir / "seed_10" / "model.safetensors").exists()
+    assert not (experiment_dir / "seed_12" / "model.safetensors").exists()
     aggregate_dir = experiment_dir / "aggregate"
     assert (aggregate_dir / "nervaluate_multi_seed.json").is_file()
     assert (aggregate_dir / "nervaluate_multi_seed.csv").is_file()
@@ -86,6 +93,7 @@ def test_run_multi_seed_final_training_isolates_runs_and_writes_aggregate(tmp_pa
     manifest = json.loads((aggregate_dir / "run_manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "complete"
     assert manifest["seeds"] == [10, 12]
+    assert manifest["retained_model_seed"] == 10
 
 
 def test_run_multi_seed_final_training_rejects_duplicate_seeds(tmp_path):

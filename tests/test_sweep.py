@@ -1,7 +1,9 @@
 import json
 import random
+from pathlib import Path
 
-from token_classification.config import SweepConfig, SweepParameter, TrainingConfig
+from token_classification.config import CrossValidationConfig, SweepConfig, SweepParameter, TrainingConfig
+from token_classification.cross_validation import FoldSpec
 from token_classification.sweep import enumerate_grid_trial_overrides, run_sweep, sample_parameter_value, sample_trial_overrides
 from token_classification.utils import write_json
 
@@ -193,3 +195,93 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
     assert not list(sweep_root.glob("trial_*/checkpoint-*"))
     assert (sweep_root / "trial_001" / "run-metadata.txt").exists()
     assert (sweep_root / "trial_002" / "run-metadata.txt").exists()
+
+
+def test_run_sweep_aggregates_fixed_cross_validation_folds_without_models(tmp_path, monkeypatch):
+    sweep_config = SweepConfig(
+        name="cv_demo",
+        output_dir=str(tmp_path / "outputs"),
+        num_trials=1,
+        search_strategy="grid",
+        seed=137,
+        objective_metric="eval_nervaluate_partial_micro_f1",
+        objective_mode="max",
+        cross_validation=CrossValidationConfig(folds=2, seed=211, group_column="document_id"),
+        base_config=TrainingConfig(
+            train_file="data/train.jsonl",
+            validation_file="data/validation.jsonl",
+            test_file="data/test.jsonl",
+        ),
+        search_space={"train_batch_size": SweepParameter(values=[4], type="int")},
+    )
+    fold_specs = [
+        FoldSpec(1, ("fold_2.jsonl",), "fold_1.jsonl", ("doc-a",)),
+        FoldSpec(2, ("fold_1.jsonl",), "fold_2.jsonl", ("doc-b",)),
+    ]
+    monkeypatch.setattr("token_classification.sweep.prepare_cross_validation_folds", lambda *_args: fold_specs)
+    calls = []
+
+    def fake_run_pipeline(config, **kwargs):
+        calls.append((config, kwargs))
+        fold_index = int(config.run_name.rsplit("_", 1)[1])
+        f1 = 0.6 if fold_index == 1 else 0.8
+        run_dir = Path(config.output_dir) / config.run_name
+        checkpoint = run_dir / "checkpoint-1"
+        checkpoint.mkdir(parents=True)
+        (checkpoint / "model.safetensors").write_text("temporary", encoding="utf-8")
+        (run_dir / "model.safetensors").write_text("must not remain", encoding="utf-8")
+        write_json(
+            run_dir / "run_summary.json",
+            {
+                "validation_metrics": {"eval_nervaluate_partial_micro_f1": f1},
+                "completed_epoch": 3.0,
+                "best_metric": f1,
+            },
+        )
+        counts = {
+            "correct": fold_index,
+            "incorrect": 0,
+            "partial": 0,
+            "missed": 1,
+            "spurious": 0,
+            "actual": fold_index,
+            "possible": fold_index + 1,
+            "precision": 1.0,
+            "recall": fold_index / (fold_index + 1),
+            "f1": f1,
+        }
+        write_json(
+            run_dir / "nervaluate" / "nervaluate_validation.json",
+            {
+                "labels": ["PERSON"],
+                "rollups": {
+                    "partial": {
+                        "overall": {
+                            "micro": counts,
+                            "macro": {"precision": 1.0, "recall": counts["recall"], "f1": f1},
+                        }
+                    }
+                },
+                "per_tag_results": {
+                    "PERSON": {
+                        "gold_support": fold_index + 1,
+                        "evaluable": True,
+                        "scenarios": {"partial": counts},
+                    }
+                },
+            },
+        )
+        return run_dir
+
+    monkeypatch.setattr("token_classification.sweep.run_pipeline", fake_run_pipeline)
+
+    sweep_root = run_sweep(sweep_config)
+
+    trial_summary = json.loads((sweep_root / "trial_001" / "trial_summary.json").read_text(encoding="utf-8"))
+    assert trial_summary["objective_mean"] == 0.7
+    assert trial_summary["objective_std"] > 0
+    assert len(calls) == 2
+    assert all(call[1]["save_model"] is False for call in calls)
+    assert all(call[1]["write_validation_nervaluate"] is True for call in calls)
+    assert not list((sweep_root / "trial_001").glob("fold_*/checkpoint-*"))
+    assert not list((sweep_root / "trial_001").glob("fold_*/model.safetensors"))

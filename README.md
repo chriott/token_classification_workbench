@@ -70,7 +70,8 @@ nervaluate metrics are aggregated with their mean and sample standard deviation:
 ```bash
 token-classification final-train \
   --config configs/train.example.yaml \
-  --seeds 25 26 27 28 29
+  --seeds 25 26 27 28 29 \
+  --retain-seed 25
 ```
 
 ## Modeling Scope

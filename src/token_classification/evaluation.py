@@ -57,6 +57,34 @@ def compute_micro_macro(
     }
 
 
+def compute_nervaluate_metrics(true_labels: Sequence[Sequence[str]], predicted_labels: Sequence[Sequence[str]], tags):
+    from nervaluate import Evaluator
+
+    evaluator = Evaluator(true_labels, predicted_labels, tags=list(tags), loader="list")
+    evaluated = evaluator.evaluate()
+    metrics = {}
+    for scenario in NERVALUATE_SCENARIOS:
+        overall_result = evaluated["overall"].get(scenario)
+        if overall_result is None:
+            continue
+        per_label_results = []
+        for label in tags:
+            label_result = evaluated["entities"].get(label, {}).get(scenario)
+            if label_result is not None and label_result.possible > 0:
+                per_label_results.append(evaluation_result_to_dict(label_result))
+        rollup = compute_micro_macro(
+            scenario,
+            evaluation_result_to_dict(overall_result),
+            per_label_results,
+        )
+        if rollup is None:
+            continue
+        for averaging in ("micro", "macro"):
+            for metric in ("precision", "recall", "f1"):
+                metrics[f"nervaluate_{scenario}_{averaging}_{metric}"] = rollup[averaging][metric]
+    return metrics
+
+
 def build_compute_metrics_fn(schema: LabelSchema):
     import numpy as np
     from seqeval.metrics import accuracy_score, f1_score, precision_score, recall_score
@@ -78,7 +106,7 @@ def build_compute_metrics_fn(schema: LabelSchema):
         recall_macro = recall_score(true_labels, true_predictions, average="macro")
         f1_macro = f1_score(true_labels, true_predictions, average="macro")
 
-        return {
+        metrics = {
             "eval_accuracy": accuracy_score(true_labels, true_predictions),
             "precision_micro": precision_micro,
             "recall_micro": recall_micro,
@@ -87,6 +115,8 @@ def build_compute_metrics_fn(schema: LabelSchema):
             "recall_macro": recall_macro,
             "f1_macro": f1_macro,
         }
+        metrics.update(compute_nervaluate_metrics(true_labels, true_predictions, schema.labels))
+        return metrics
 
     return compute_metrics
 

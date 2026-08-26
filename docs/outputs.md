@@ -70,11 +70,11 @@ Running `final-train` with `--seeds` creates one complete run directory per seed
 
 ```text
 <output_dir>/<run_name>/
-├── seed_42/
-├── seed_43/
-├── seed_44/
-├── seed_45/
-├── seed_46/
+├── seed_25/
+├── seed_26/
+├── seed_27/
+├── seed_28/
+├── seed_29/
 └── aggregate/
     ├── run_manifest.json
     ├── nervaluate_multi_seed.json
@@ -85,3 +85,11 @@ Running `final-train` with `--seeds` creates one complete run directory per seed
 Aggregation is kept separate for strict, entity-type, and partial matching. It reports the mean and sample standard
 deviation (`n - 1`) of precision, recall, and F1 for overall micro, overall macro, and every evaluable label. Raw values
 are retained by seed. Labels with no gold test examples are listed as not evaluable rather than assigned an F1 of zero.
+Only the model selected in advance with `--retain-seed` is kept; the other runs retain metrics but not model weights.
+
+## Cross-Validation Sweep Outputs
+
+A cross-validation sweep adds a reusable `folds/fold_manifest.json`, one JSONL shard per fold, and a
+`trial_summary.json` under every trial directory. The trial summary includes fold mean and sample standard deviation,
+the worst and best fold, per-fold values, and pooled out-of-fold nervaluate metrics. Fold checkpoint directories are
+removed as soon as their metrics have been written.

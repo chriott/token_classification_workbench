@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from .config import TrainingConfig
-from .utils import ensure_directory, write_json
+from .utils import ensure_directory, remove_checkpoint_directories, remove_model_weight_files, write_json
 
 
 AGGREGATE_METRICS = ("precision", "recall", "f1")
@@ -207,6 +207,7 @@ def run_multi_seed_final_training(
     config: TrainingConfig,
     seeds: Sequence[int],
     *,
+    retain_seed: int | None = None,
     pipeline_runner: Callable[..., Path] | None = None,
 ) -> Path:
     normalized_seeds = [int(seed) for seed in seeds]
@@ -214,6 +215,9 @@ def run_multi_seed_final_training(
         raise ValueError("At least one seed must be provided.")
     if len(set(normalized_seeds)) != len(normalized_seeds):
         raise ValueError("Seeds must be unique.")
+    retained_seed = normalized_seeds[0] if retain_seed is None else int(retain_seed)
+    if retained_seed not in normalized_seeds:
+        raise ValueError("retain_seed must be one of the requested seeds.")
 
     if pipeline_runner is None:
         from .training import run_pipeline
@@ -225,6 +229,7 @@ def run_multi_seed_final_training(
     manifest = {
         "status": "running",
         "seeds": normalized_seeds,
+        "retained_model_seed": retained_seed,
         "config": config.to_dict(),
         "python_version": platform.python_version(),
         "package_versions": installed_package_versions(),
@@ -241,18 +246,28 @@ def run_multi_seed_final_training(
                 run_name=f"seed_{seed}",
                 split_seed=seed,
             )
-            run_output_dir = pipeline_runner(seed_config, final_training_mode=True)
-            result_path = run_output_dir / "nervaluate" / "nervaluate_test.json"
-            with result_path.open(encoding="utf-8") as handle:
-                results_by_seed[seed] = json.load(handle)
-            manifest["runs"].append(
-                {
-                    "seed": seed,
-                    "output_dir": str(run_output_dir),
-                    "nervaluate_result": str(result_path),
-                }
-            )
-            write_json(manifest_path, manifest)
+            planned_run_dir = Path(seed_config.output_dir) / seed_config.run_name
+            try:
+                run_output_dir = pipeline_runner(
+                    seed_config,
+                    final_training_mode=True,
+                    save_model=seed == retained_seed,
+                )
+                result_path = run_output_dir / "nervaluate" / "nervaluate_test.json"
+                with result_path.open(encoding="utf-8") as handle:
+                    results_by_seed[seed] = json.load(handle)
+                manifest["runs"].append(
+                    {
+                        "seed": seed,
+                        "output_dir": str(run_output_dir),
+                        "nervaluate_result": str(result_path),
+                    }
+                )
+                write_json(manifest_path, manifest)
+            finally:
+                remove_checkpoint_directories(planned_run_dir)
+                if seed != retained_seed:
+                    remove_model_weight_files(planned_run_dir)
 
         summary = aggregate_nervaluate_results(results_by_seed)
         output_paths = write_multi_seed_outputs(summary, aggregate_dir)

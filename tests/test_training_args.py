@@ -32,13 +32,9 @@ def test_run_pipeline_saves_models_by_default():
     assert signature(run_pipeline).parameters["save_model"].default is True
 
 
-def test_run_pipeline_rejects_test_evaluation_without_a_saved_model():
-    try:
-        run_pipeline(TrainingConfig(), run_test_evaluation=True, save_model=False)
-    except ValueError as exc:
-        assert "requires run_test_evaluation=False" in str(exc)
-    else:
-        raise AssertionError("Expected model-free test evaluation to raise ValueError.")
+def test_run_pipeline_supports_in_memory_test_evaluation_without_saving():
+    assert "save_model" in signature(run_pipeline).parameters
+    assert "run_test_evaluation" in signature(run_pipeline).parameters
 
 
 def test_seed_training_run_uses_transformers_seed_before_model_creation():

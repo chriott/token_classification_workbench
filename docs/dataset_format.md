@@ -52,7 +52,7 @@ Choose `model_name` and `max_length` in the training config before chunking long
 token-classification split-data \
   --input-file data/annotated_documents.jsonl \
   --output-dir data/splits \
-  --seed 42 \
+  --seed 137 \
   --stratify-by constrained_min_labels \
   --min-label-presence 1 \
   --chunk-max-length 512 \

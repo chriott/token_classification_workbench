@@ -19,7 +19,7 @@ class TrainingConfig:
     text_column: str | None = None
     spans_column: str = "spans"
     optional_string_columns: tuple[str, ...] = ()
-    train_file: str = "data/train.csv"
+    train_file: str | tuple[str, ...] = "data/train.csv"
     validation_file: str | None = "data/validation.csv"
     test_file: str = "data/test.csv"
     logging_steps: int = 200
@@ -60,6 +60,9 @@ class TrainingConfig:
         optional_columns = payload.get("optional_string_columns")
         if optional_columns is not None:
             payload["optional_string_columns"] = tuple(optional_columns)
+        train_file = payload.get("train_file")
+        if isinstance(train_file, list):
+            payload["train_file"] = tuple(train_file)
         return replace(self, **payload)
 
     @classmethod
@@ -68,6 +71,9 @@ class TrainingConfig:
         optional_columns = payload.get("optional_string_columns")
         if optional_columns is not None:
             payload["optional_string_columns"] = tuple(optional_columns)
+        train_file = payload.get("train_file")
+        if isinstance(train_file, list):
+            payload["train_file"] = tuple(train_file)
         return cls(**payload)
 
     @classmethod
@@ -101,6 +107,24 @@ class SweepParameter:
 
 
 @dataclass
+class CrossValidationConfig:
+    folds: int = 5
+    seed: int = 137
+    group_column: str | None = None
+    stratify_by: str = "iterative_multilabel"
+
+    def validate(self) -> None:
+        if self.folds < 2:
+            raise ValueError("cross_validation.folds must be at least 2.")
+        if not self.group_column:
+            raise ValueError(
+                "cross_validation.group_column is required so chunks from one document cannot leak across folds."
+            )
+        if self.stratify_by not in ("none", "iterative_multilabel"):
+            raise ValueError("cross_validation.stratify_by must be 'none' or 'iterative_multilabel'.")
+
+
+@dataclass
 class SweepConfig:
     name: str
     base_config: TrainingConfig
@@ -111,6 +135,7 @@ class SweepConfig:
     seed: int = 42
     objective_metric: str | None = None
     objective_mode: str = "max"
+    cross_validation: CrossValidationConfig | None = None
 
     def validate(self) -> None:
         if not self.name:
@@ -124,6 +149,10 @@ class SweepConfig:
         if not self.search_space:
             raise ValueError("search_space must contain at least one parameter.")
         self.base_config.validate()
+        if self.cross_validation is not None:
+            self.cross_validation.validate()
+            if "split_seed" in self.search_space:
+                raise ValueError("split_seed cannot be a search parameter when cross-validation is enabled.")
         valid_training_fields = {field.name for field in fields(TrainingConfig)}
         for name, parameter in self.search_space.items():
             if name not in valid_training_fields:
@@ -146,6 +175,7 @@ class SweepConfig:
             "seed": self.seed,
             "objective_metric": self.objective_metric,
             "objective_mode": self.objective_mode,
+            "cross_validation": asdict(self.cross_validation) if self.cross_validation is not None else None,
             "base_config": self.base_config.to_dict(),
             "search_space": {
                 name: {
@@ -168,6 +198,11 @@ class SweepConfig:
             raise ValueError("Sweep config must include a 'search_space' mapping.")
         payload["base_config"] = TrainingConfig.from_mapping(base_raw)
         payload["search_space"] = {name: parse_sweep_parameter(name, parameter) for name, parameter in search_raw.items()}
+        cross_validation_raw = payload.get("cross_validation")
+        if cross_validation_raw is not None:
+            if not isinstance(cross_validation_raw, dict):
+                raise ValueError("cross_validation must be a mapping.")
+            payload["cross_validation"] = CrossValidationConfig(**cross_validation_raw)
         return cls(**payload)
 
     @classmethod
