@@ -78,9 +78,10 @@ def test_run_multi_seed_final_training_isolates_runs_and_writes_aggregate(tmp_pa
         config,
         [10, 12],
         pipeline_runner=fake_pipeline_runner,
+        timestamp="2026-09-02_10-30-25",
     )
 
-    assert experiment_dir == tmp_path / "experiment"
+    assert experiment_dir == tmp_path / "experiment_2026-09-02_10-30-25"
     assert [item.split_seed for item in seen_configs] == [10, 12]
     assert [item.run_name for item in seen_configs] == ["seed_10", "seed_12"]
     assert save_model_values == [True, False]
@@ -114,13 +115,18 @@ def test_run_multi_seed_final_training_records_failure(tmp_path):
         raise RuntimeError("training failed")
 
     try:
-        run_multi_seed_final_training(config, [10], pipeline_runner=failing_runner)
+        run_multi_seed_final_training(
+            config,
+            [10],
+            pipeline_runner=failing_runner,
+            timestamp="2026-09-02_10-30-25",
+        )
     except RuntimeError:
         pass
     else:
         raise AssertionError("Expected the training failure to be propagated.")
 
-    manifest_path = tmp_path / "experiment" / "aggregate" / "run_manifest.json"
+    manifest_path = tmp_path / "experiment_2026-09-02_10-30-25" / "aggregate" / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == "failed"
     assert manifest["error"] == "RuntimeError: training failed"

@@ -44,6 +44,19 @@ optional_string_columns:
 
 Set this to `[]` when no metadata needs to be preserved.
 
+## Excluding Labels
+
+To omit documented labels from a training run without rewriting the source data, list them at the top level of the
+training config:
+
+```yaml
+excluded_labels:
+  - RARE_LABEL
+```
+
+Their spans are removed in memory from training, validation, and test data. Rows that contain no remaining spans are
+kept as negative examples. Excluded labels therefore do not enter the model label schema or evaluation metrics.
+
 ## Split Data
 
 Choose `model_name` and `max_length` in the training config before chunking long documents. Then create train, validation, and test files using the same tokenizer and final sequence length:

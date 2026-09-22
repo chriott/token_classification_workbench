@@ -180,6 +180,29 @@ def test_chunk_record_reserves_space_for_model_special_tokens():
     assert all(chunk["token_len"] + tokenizer.special_token_count <= 4 for chunk in chunks)
 
 
+def test_chunk_record_checks_standalone_tokenization():
+    class BoundarySensitiveTokenizer(FakeWhitespaceTokenizer):
+        def __call__(self, text, **kwargs):
+            result = super().__call__(text, **kwargs)
+            # Simulate a tokenizer adding a token at an extracted boundary.
+            extra = int(text != "aa bb cc dd ee ff")
+            result["input_ids"] = list(range(len(result["offset_mapping"]) + extra))
+            return result
+
+    tokenizer = BoundarySensitiveTokenizer(special_token_count=2)
+    text = "aa bb cc dd ee ff"
+    chunks = _chunk_record(
+        {"text": text, "spans": [{"start": 9, "end": 14, "label": "ENTITY"}]},
+        tokenizer=tokenizer,
+        chunk_max_length=6,
+        chunk_stride=1,
+    )
+    assert all(len(tokenizer(chunk["text"], verbose=False)["input_ids"]) + 2 <= 6 for chunk in chunks)
+    assert any(chunk["spans"] for chunk in chunks)
+    covered = {i for chunk in chunks for i in range(chunk["char_start"], chunk["char_end"])}
+    assert all(i in covered for i, char in enumerate(text) if not char.isspace())
+
+
 def test_chunk_record_rejects_limit_without_content_token_capacity():
     tokenizer = FakeWhitespaceTokenizer(special_token_count=2)
     record = {"text": "one two", "spans": [], "_source_row_index": 0}
@@ -354,3 +377,42 @@ def test_split_input_data_constrained_min_labels_writes_stats(tmp_path):
     assert stats["all_labels"] == ["AGE", "LIFESTYLE", "TIME"]
     assert stats["coverage_summary"]["min_label_presence"] == 1
     assert "TIME" in stats["splits"]["validation"]["present_labels"]
+
+
+def test_constrained_split_keeps_infeasible_labels_in_training(tmp_path):
+    input_path = tmp_path / "input.jsonl"
+    records = [
+        {
+            "doc_key": f"doc_{index}",
+            "text": f"doc {index}",
+            "annotations": [{"begin": 0, "end": 3, "label": "COMMON"}],
+        }
+        for index in range(9)
+    ]
+    records[-1]["annotations"].append({"begin": 4, "end": 5, "label": "SINGLETON"})
+    with input_path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record) + "\n")
+
+    split_input_data(
+        input_file=input_path,
+        output_dir=tmp_path / "splits",
+        train_ratio=0.6,
+        validation_ratio=0.2,
+        test_ratio=0.2,
+        seed=25,
+        output_format="jsonl",
+        stratify_by="constrained_min_labels",
+        min_label_presence=1,
+    )
+
+    split_rows = {
+        name: [json.loads(line) for line in (tmp_path / "splits" / f"{name}.jsonl").read_text().splitlines()]
+        for name in ("train", "validation", "test")
+    }
+    assert any(any(span["label"] == "SINGLETON" for span in row["spans"]) for row in split_rows["train"])
+    assert not any(
+        any(span["label"] == "SINGLETON" for span in row["spans"])
+        for name in ("validation", "test")
+        for row in split_rows[name]
+    )

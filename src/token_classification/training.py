@@ -52,6 +52,8 @@ def make_training_args(config: TrainingConfig, run_output_dir: str | Path, evalu
         logging_steps=config.logging_steps,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         fp16=config.fp16,
+        bf16=config.bf16,
+        gradient_checkpointing=config.gradient_checkpointing,
         save_total_limit=config.save_total_limit,
         run_name=config.run_name,
     )
@@ -257,6 +259,7 @@ def run_pipeline(
             "max_length": config.max_length,
             "model_name": config.model_name,
             "primary_metric": config.primary_metric,
+            "excluded_labels": list(config.excluded_labels),
             "early_stopping_enabled": config.early_stopping_enabled,
             "early_stopping_patience": config.early_stopping_patience,
             "early_stopping_threshold": config.early_stopping_threshold,

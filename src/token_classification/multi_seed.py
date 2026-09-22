@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from .config import TrainingConfig
-from .utils import ensure_directory, remove_checkpoint_directories, remove_model_weight_files, write_json
+from .utils import (
+    create_timestamped_run_directory,
+    ensure_directory,
+    remove_checkpoint_directories,
+    remove_model_weight_files,
+    write_json,
+)
 
 
 AGGREGATE_METRICS = ("precision", "recall", "f1")
@@ -209,6 +215,7 @@ def run_multi_seed_final_training(
     *,
     retain_seed: int | None = None,
     pipeline_runner: Callable[..., Path] | None = None,
+    timestamp: str | None = None,
 ) -> Path:
     normalized_seeds = [int(seed) for seed in seeds]
     if not normalized_seeds:
@@ -224,7 +231,11 @@ def run_multi_seed_final_training(
 
         pipeline_runner = run_pipeline
 
-    experiment_dir = ensure_directory(Path(config.output_dir) / config.run_name)
+    experiment_dir = create_timestamped_run_directory(
+        config.output_dir,
+        config.run_name,
+        timestamp=timestamp,
+    )
     aggregate_dir = ensure_directory(experiment_dir / "aggregate")
     manifest = {
         "status": "running",

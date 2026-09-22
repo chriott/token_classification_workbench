@@ -12,6 +12,7 @@ from .prediction import run_prediction
 from .split_data import split_input_data
 from .sweep import run_sweep
 from .training import run_pipeline
+from .utils import create_timestamped_run_directory
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validation split ratio. Default: 0.1.",
     )
     split_data_parser.add_argument("--test-ratio", type=float, default=0.1, help="Test split ratio. Default: 0.1.")
-    split_data_parser.add_argument("--seed", type=int, default=42, help="Shuffle seed. Default: 42.")
+    split_data_parser.add_argument("--seed", type=int, default=25, help="Shuffle seed. Default: 25.")
     split_data_parser.add_argument(
         "--stratify-by",
         choices=("none", "primary_label", "label_signature", "iterative_multilabel", "constrained_min_labels"),
@@ -181,7 +182,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.retain_seed is not None:
             parser.error("--retain-seed requires --seeds.")
         else:
-            run_pipeline(config, final_training_mode=True)
+            run_dir = create_timestamped_run_directory(config.output_dir, config.run_name)
+            timestamped_config = config.with_overrides(
+                output_dir=str(run_dir.parent),
+                run_name=run_dir.name,
+            )
+            run_pipeline(timestamped_config, final_training_mode=True)
         return 0
 
     if args.command == "validate-data":

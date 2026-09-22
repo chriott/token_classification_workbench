@@ -46,7 +46,9 @@ Grid searches require an explicit `values` list for every parameter. The Cartesi
 
 ## Outputs
 
-Each sweep writes to `outputs/sweeps/<name>/`. Important artifacts include:
+Each sweep writes to a new system-time-stamped directory such as
+`outputs/sweeps/<name>_2026-09-02_10-30-25/`. A same-second collision receives `_02`, `_03`, and so on, so previous
+sweep results are never overwritten. Important artifacts include:
 
 - `sweep_config_used.yaml`
 - `summary.json`
@@ -81,6 +83,12 @@ Each trial writes `trial_summary.json` containing the fold-level objective mean,
 maximum, individual fold values, and pooled out-of-fold nervaluate results. The leaderboard ranks trials by the mean
 fold objective. A label occurring in fewer than five document groups is reported as sparse across folds; a label in
 only one group is rejected because it would disappear from the training portion of one fold.
+
+For an infrastructure smoke test, a singleton label can be omitted only from the generated CV folds with
+`cross_validation.excluded_labels`. This does not modify the source splits or the final-training configuration. Use
+this only when the exclusion is documented; a singleton label cannot produce a meaningful cross-validation estimate.
+To apply the same decision during final training and test evaluation, repeat the labels in the final configuration's
+top-level `excluded_labels` field.
 
 Fold runs are sequential. Model checkpoints are temporary, bounded by `save_total_limit`, and deleted immediately after
 each fold. No sweep or fold model weights are retained.

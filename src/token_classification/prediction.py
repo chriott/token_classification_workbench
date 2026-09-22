@@ -11,6 +11,8 @@ from .labels import bio_to_spans
 from .training import make_trainer
 from .utils import ensure_directory, write_json
 
+CHUNK_METADATA_FIELDS = {"chunk_index", "char_start", "char_end", "token_len", "annotation_count"}
+
 
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, (dict, list)):
@@ -42,6 +44,104 @@ def _tokenize_for_prediction(dataset, tokenizer, max_length: int):
         )
 
     return dataset.map(tokenize, batched=False)
+
+
+def _integer_metadata(metadata: dict[str, Any], field: str, default: int = 0) -> int:
+    value = metadata.get(field, default)
+    if value in (None, ""):
+        return default
+    return int(value)
+
+
+def aggregate_chunk_predictions(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Restore document-relative offsets and deduplicate exact predictions from overlapping chunks."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    group_order: list[str] = []
+    for record in records:
+        metadata = record.get("metadata", {}) or {}
+        document_id = metadata.get("document_id") or metadata.get("doc_key") or metadata.get("source_row_id")
+        group_key = str(document_id) if document_id not in (None, "") else f"row:{record.get('index', len(group_order))}"
+        if group_key not in grouped:
+            grouped[group_key] = []
+            group_order.append(group_key)
+        grouped[group_key].append(record)
+
+    documents = []
+    for group_key in group_order:
+        chunks = sorted(
+            grouped[group_key],
+            key=lambda row: (
+                _integer_metadata(row.get("metadata", {}) or {}, "char_start"),
+                _integer_metadata(row.get("metadata", {}) or {}, "chunk_index"),
+            ),
+        )
+        maximum_end = max(
+            (
+                _integer_metadata(chunk.get("metadata", {}) or {}, "char_end", len(chunk.get("text", "")))
+                for chunk in chunks
+            ),
+            default=0,
+        )
+        characters = [""] * maximum_end
+        span_map: dict[tuple[int, int, str], dict[str, Any]] = {}
+        for chunk in chunks:
+            metadata = chunk.get("metadata", {}) or {}
+            char_start = _integer_metadata(metadata, "char_start")
+            chunk_text = chunk.get("text", "") or ""
+            required_length = char_start + len(chunk_text)
+            if required_length > len(characters):
+                characters.extend([""] * (required_length - len(characters)))
+            for offset, character in enumerate(chunk_text):
+                characters[char_start + offset] = character
+            for span in chunk.get("predicted_spans", []):
+                global_span = dict(span)
+                global_span["start"] = int(span["start"]) + char_start
+                global_span["end"] = int(span["end"]) + char_start
+                key = (global_span["start"], global_span["end"], str(global_span["label"]))
+                span_map.setdefault(key, global_span)
+
+        text = "".join(character or " " for character in characters)
+        predicted_spans = sorted(span_map.values(), key=lambda span: (span["start"], span["end"], span["label"]))
+        for span in predicted_spans:
+            span["text"] = text[span["start"] : span["end"]]
+        first_metadata = chunks[0].get("metadata", {}) or {}
+        document_metadata = {
+            field: value for field, value in first_metadata.items() if field not in CHUNK_METADATA_FIELDS
+        }
+        documents.append(
+            {
+                "document_id": group_key,
+                "metadata": document_metadata,
+                "text": text,
+                "predicted_spans": predicted_spans,
+            }
+        )
+    return documents
+
+
+def _save_document_predictions(records: list[dict[str, Any]], output_path: Path) -> tuple[Path, Path]:
+    jsonl_path = output_path / "document_predictions.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    csv_path = output_path / "document_predicted_spans.csv"
+    fieldnames = ["document_id", "label", "start", "end", "text_span"]
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in records:
+            for span in record["predicted_spans"]:
+                writer.writerow(
+                    {
+                        "document_id": record["document_id"],
+                        "label": span["label"],
+                        "start": span["start"],
+                        "end": span["end"],
+                        "text_span": span.get("text", ""),
+                    }
+                )
+    return jsonl_path, csv_path
 
 
 def save_prediction_outputs(trainer, tokenized_dataset, raw_dataset, output_dir: str | Path, id_to_label: dict[int, str]):
@@ -121,14 +221,20 @@ def save_prediction_outputs(trainer, tokenized_dataset, raw_dataset, output_dir:
         writer.writeheader()
         writer.writerows(flat_rows)
 
+    document_records = aggregate_chunk_predictions(detailed_records)
+    document_jsonl_path, document_csv_path = _save_document_predictions(document_records, output_path)
+
     summary = {
         "row_count": len(raw_python),
+        "document_count": len(document_records),
         "rows_with_predictions": rows_with_predictions,
         "total_predicted_spans": total_predicted_spans,
         "label_counts": label_counts,
         "output_files": {
             "jsonl": str(jsonl_path),
             "csv": str(csv_path),
+            "document_jsonl": str(document_jsonl_path),
+            "document_csv": str(document_csv_path),
         },
     }
     summary_path = write_json(output_path / "prediction_summary.json", summary)

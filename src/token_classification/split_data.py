@@ -355,6 +355,27 @@ def _constrained_min_label_split(
         for label in record_labels[record_id]:
             doc_label_counts[split_name][label] += 1
 
+    # Labels that cannot occur in every split are not independently evaluable. Keep their
+    # examples in training so the learned schema still contains every known label and the
+    # validation/test files never introduce an unseen class.
+    infeasible_labels = sorted(label for label in label_to_record_ids if label not in feasible_labels)
+    rare_record_ids = sorted(
+        {
+            record_id
+            for label in infeasible_labels
+            for record_id in label_to_record_ids[label]
+        },
+        key=lambda record_id: (
+            -sum(label in infeasible_labels for label in record_labels[record_id]),
+            record_id,
+        ),
+    )
+    for record_id in rare_record_ids:
+        if record_id in pending:
+            if remaining_doc_capacity["train"] <= 0:
+                raise ValueError("Training split has insufficient capacity for all rare-label documents.")
+            assign_record(record_id, "train")
+
     sorted_labels = sorted(label_to_record_ids, key=lambda label: (label_totals[label], label))
     for label in sorted_labels:
         if label not in feasible_labels:
@@ -447,7 +468,8 @@ def _constrained_min_label_split(
     coverage_summary = {
         "min_label_presence": min_label_presence,
         "feasible_labels": sorted(feasible_labels),
-        "infeasible_labels": sorted(label for label in label_to_record_ids if label not in feasible_labels),
+        "infeasible_labels": infeasible_labels,
+        "infeasible_label_policy": "train_only",
         "target_label_doc_counts": target_label_counts,
         "actual_label_doc_counts": {
             split_name: dict(sorted(doc_label_counts[split_name].items()))
@@ -643,6 +665,24 @@ def _chunk_record(record: dict[str, Any], *, tokenizer, chunk_max_length: int, c
         char_start = offsets[start_token][0]
         char_end = offsets[end_token - 1][1]
 
+        # Tokenization can change at substring boundaries. Check the actual
+        # standalone chunk rather than relying on offsets from the full text.
+        while True:
+            chunk_encoding = tokenizer(
+                text[char_start:char_end],
+                add_special_tokens=False,
+                return_offsets_mapping=True,
+                truncation=False,
+                verbose=False,
+            )
+            chunk_token_length = len(chunk_encoding.get("input_ids", chunk_encoding["offset_mapping"]))
+            if chunk_token_length <= content_max_length:
+                break
+            if end_token <= start_token + 1:
+                raise ValueError("A single token boundary cannot fit within chunk_max_length after retokenization.")
+            end_token -= 1
+            char_end = offsets[end_token - 1][1]
+
         chunk_spans = []
         overlapping_end_spans = []
         for span in record.get("spans", []):
@@ -665,7 +705,7 @@ def _chunk_record(record: dict[str, Any], *, tokenizer, chunk_max_length: int, c
         chunk["chunk_index"] = chunk_index
         chunk["char_start"] = char_start
         chunk["char_end"] = char_end
-        chunk["token_len"] = end_token - start_token
+        chunk["token_len"] = chunk_token_length
         chunk["annotation_count"] = len(chunk_spans)
         chunk["source_row_id"] = record.get("source_row_id", record.get("_source_row_index"))
         chunks.append(chunk)
@@ -759,7 +799,7 @@ def split_input_data(
     train_ratio: float = 0.8,
     validation_ratio: float = 0.1,
     test_ratio: float = 0.1,
-    seed: int = 42,
+    seed: int = 25,
     text_column: str | None = None,
     spans_column: str | None = None,
     output_format: str = "csv",

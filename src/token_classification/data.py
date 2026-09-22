@@ -143,7 +143,40 @@ def load_csv_dataset(path: str | Sequence[str]):
     return load_dataset(dataset_name, data_files=data_files, cache_dir=str(cache_dir))["data"]
 
 
-def load_and_prepare_dataset(path: str | Sequence[str], config: TrainingConfig):
+def filter_excluded_labels(dataset, excluded_labels: Sequence[str]):
+    excluded = frozenset(str(label) for label in excluded_labels)
+    if not excluded:
+        return dataset
+    return dataset.map(
+        lambda example: {
+            "spans": [
+                span
+                for span in example.get("spans", [])
+                if str(span.get("label")) not in excluded
+            ]
+        },
+        desc="excluding configured labels",
+    )
+
+
+def _label_counts(dataset) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for example in dataset:
+        for span in example.get("spans", []):
+            label = span.get("label")
+            if label in (None, ""):
+                continue
+            label_name = str(label)
+            counts[label_name] = counts.get(label_name, 0) + 1
+    return counts
+
+
+def load_and_prepare_dataset(
+    path: str | Sequence[str],
+    config: TrainingConfig,
+    *,
+    apply_label_exclusions: bool = True,
+):
     loaded = load_csv_dataset(path)
     loaded = ensure_text_column(loaded, config.text_column)
     spans_column = find_spans_column(loaded.column_names, config.spans_column)
@@ -154,6 +187,8 @@ def load_and_prepare_dataset(path: str | Sequence[str], config: TrainingConfig):
         )
     loaded = loaded.map(_make_parse_spans_fn(spans_column))
     loaded = normalize_optional_string_columns(loaded, config.optional_string_columns)
+    if apply_label_exclusions:
+        loaded = filter_excluded_labels(loaded, config.excluded_labels)
     return loaded
 
 
@@ -168,8 +203,33 @@ def load_dataset_splits(config: TrainingConfig):
     with contextlib.redirect_stderr(io.StringIO()):
         from datasets import DatasetDict
     dataset = DatasetDict()
-    dataset["train"] = load_and_prepare_dataset(config.train_file, config)
+    dataset["train"] = load_and_prepare_dataset(config.train_file, config, apply_label_exclusions=False)
     if config.validation_file:
-        dataset["validation"] = load_and_prepare_dataset(config.validation_file, config)
-    dataset["test"] = load_and_prepare_dataset(config.test_file, config)
+        dataset["validation"] = load_and_prepare_dataset(
+            config.validation_file,
+            config,
+            apply_label_exclusions=False,
+        )
+    dataset["test"] = load_and_prepare_dataset(config.test_file, config, apply_label_exclusions=False)
+
+    if config.excluded_labels:
+        raw_counts = {split_name: _label_counts(split) for split_name, split in dataset.items()}
+        available_labels = {
+            label
+            for split_counts in raw_counts.values()
+            for label in split_counts
+        }
+        unknown_labels = sorted(set(config.excluded_labels) - available_labels)
+        if unknown_labels:
+            raise ValueError(f"Training excluded_labels are not present in the data: {unknown_labels}.")
+
+        print("\nConfigured label exclusions:")
+        for label in config.excluded_labels:
+            counts = ", ".join(
+                f"{split_name}={split_counts.get(label, 0)}"
+                for split_name, split_counts in raw_counts.items()
+            )
+            print(f"- {label}: {counts}")
+        for split_name in dataset:
+            dataset[split_name] = filter_excluded_labels(dataset[split_name], config.excluded_labels)
     return dataset

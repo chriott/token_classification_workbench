@@ -26,6 +26,13 @@ def test_training_config_has_no_domain_specific_metadata_defaults():
     config = TrainingConfig()
 
     assert config.optional_string_columns == ()
+    assert config.excluded_labels == ()
+
+
+def test_training_config_parses_excluded_labels_as_tuple():
+    config = TrainingConfig.from_mapping({"excluded_labels": ["RARE_A", "RARE_B"]})
+
+    assert config.excluded_labels == ("RARE_A", "RARE_B")
 
 
 def test_run_pipeline_saves_models_by_default():
@@ -64,6 +71,8 @@ def test_make_training_args_accepts_eval_strategy_alias():
             logging_steps,
             gradient_accumulation_steps,
             fp16,
+            bf16,
+            gradient_checkpointing,
             save_total_limit,
             run_name,
             warmup_ratio,
@@ -84,7 +93,20 @@ def test_make_training_args_accepts_eval_strategy_alias():
         make_training_args(config, "outputs/demo", evaluation_enabled=True)
 
     assert captured_kwargs["eval_strategy"] == "epoch"
+    assert captured_kwargs["bf16"] is False
+    assert captured_kwargs["gradient_checkpointing"] is False
     assert "self" in captured_kwargs
+
+
+def test_training_config_rejects_multiple_mixed_precision_modes():
+    config = TrainingConfig(fp16=True, bf16=True)
+
+    try:
+        config.validate()
+    except ValueError as exc:
+        assert "cannot both be enabled" in str(exc)
+    else:
+        raise AssertionError("Expected mutually exclusive precision modes to be rejected.")
 
 
 def test_make_training_args_raises_for_unsupported_required_arguments():

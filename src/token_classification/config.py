@@ -11,7 +11,7 @@ class TrainingConfig:
     output_dir: str = "outputs/roberta_large"
     run_name: str = "baseline"
     max_length: int = 512
-    split_seed: int = 42
+    split_seed: int = 25
     train_learning_rate: float = 5e-5
     train_batch_size: int = 16
     train_epochs: float = 30
@@ -19,12 +19,15 @@ class TrainingConfig:
     text_column: str | None = None
     spans_column: str = "spans"
     optional_string_columns: tuple[str, ...] = ()
+    excluded_labels: tuple[str, ...] = ()
     train_file: str | tuple[str, ...] = "data/train.csv"
     validation_file: str | None = "data/validation.csv"
     test_file: str = "data/test.csv"
     logging_steps: int = 200
     gradient_accumulation_steps: int = 1
     fp16: bool = True
+    bf16: bool = False
+    gradient_checkpointing: bool = False
     save_total_limit: int = 1
     warmup_ratio: float = 0.06
     dataloader_num_workers: int = 4
@@ -47,10 +50,16 @@ class TrainingConfig:
             raise ValueError("max_length must be greater than zero.")
         if self.train_epochs <= 0:
             raise ValueError("train_epochs must be greater than zero.")
+        if self.fp16 and self.bf16:
+            raise ValueError("fp16 and bf16 cannot both be enabled.")
         if self.early_stopping_patience < 1:
             raise ValueError("early_stopping_patience must be at least 1.")
         if self.early_stopping_threshold < 0:
             raise ValueError("early_stopping_threshold must be zero or greater.")
+        if any(not str(label).strip() for label in self.excluded_labels):
+            raise ValueError("excluded_labels cannot contain empty labels.")
+        if len(set(self.excluded_labels)) != len(self.excluded_labels):
+            raise ValueError("excluded_labels cannot contain duplicate labels.")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,6 +69,9 @@ class TrainingConfig:
         optional_columns = payload.get("optional_string_columns")
         if optional_columns is not None:
             payload["optional_string_columns"] = tuple(optional_columns)
+        excluded_labels = payload.get("excluded_labels")
+        if excluded_labels is not None:
+            payload["excluded_labels"] = tuple(excluded_labels)
         train_file = payload.get("train_file")
         if isinstance(train_file, list):
             payload["train_file"] = tuple(train_file)
@@ -71,6 +83,9 @@ class TrainingConfig:
         optional_columns = payload.get("optional_string_columns")
         if optional_columns is not None:
             payload["optional_string_columns"] = tuple(optional_columns)
+        excluded_labels = payload.get("excluded_labels")
+        if excluded_labels is not None:
+            payload["excluded_labels"] = tuple(excluded_labels)
         train_file = payload.get("train_file")
         if isinstance(train_file, list):
             payload["train_file"] = tuple(train_file)
@@ -112,6 +127,7 @@ class CrossValidationConfig:
     seed: int = 137
     group_column: str | None = None
     stratify_by: str = "iterative_multilabel"
+    excluded_labels: tuple[str, ...] = ()
 
     def validate(self) -> None:
         if self.folds < 2:
@@ -132,7 +148,7 @@ class SweepConfig:
     output_dir: str = "outputs/sweeps"
     num_trials: int = 10
     search_strategy: str = "random"
-    seed: int = 42
+    seed: int = 25
     objective_metric: str | None = None
     objective_mode: str = "max"
     cross_validation: CrossValidationConfig | None = None
@@ -202,7 +218,11 @@ class SweepConfig:
         if cross_validation_raw is not None:
             if not isinstance(cross_validation_raw, dict):
                 raise ValueError("cross_validation must be a mapping.")
-            payload["cross_validation"] = CrossValidationConfig(**cross_validation_raw)
+            cross_validation_payload = dict(cross_validation_raw)
+            excluded_labels = cross_validation_payload.get("excluded_labels")
+            if excluded_labels is not None:
+                cross_validation_payload["excluded_labels"] = tuple(excluded_labels)
+            payload["cross_validation"] = CrossValidationConfig(**cross_validation_payload)
         return cls(**payload)
 
     @classmethod

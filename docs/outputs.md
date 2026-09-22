@@ -69,7 +69,7 @@ macro averaging.
 Running `final-train` with `--seeds` creates one complete run directory per seed and an aggregate directory:
 
 ```text
-<output_dir>/<run_name>/
+<output_dir>/<run_name>_<system-date>_<system-time>/
 ├── seed_25/
 ├── seed_26/
 ├── seed_27/
@@ -86,10 +86,13 @@ Aggregation is kept separate for strict, entity-type, and partial matching. It r
 deviation (`n - 1`) of precision, recall, and F1 for overall micro, overall macro, and every evaluable label. Raw values
 are retained by seed. Labels with no gold test examples are listed as not evaluable rather than assigned an F1 of zero.
 Only the model selected in advance with `--retain-seed` is kept; the other runs retain metrics but not model weights.
+Every `final-train` invocation receives a new timestamped directory, including single-seed invocations without
+`--seeds`. If two invocations start in the same second, a numeric suffix prevents a collision.
 
 ## Cross-Validation Sweep Outputs
 
-A cross-validation sweep adds a reusable `folds/fold_manifest.json`, one JSONL shard per fold, and a
+A sweep writes to `<output_dir>/<name>_<system-date>_<system-time>/`, preserving earlier runs with the same configured
+name. A cross-validation sweep adds a reusable `folds/fold_manifest.json`, one JSONL shard per fold, and a
 `trial_summary.json` under every trial directory. The trial summary includes fold mean and sample standard deviation,
 the worst and best fold, per-fold values, and pooled out-of-fold nervaluate metrics. Fold checkpoint directories are
 removed as soon as their metrics have been written.

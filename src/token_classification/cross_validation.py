@@ -224,6 +224,23 @@ def prepare_cross_validation_folds(
 ) -> list[FoldSpec]:
     cross_validation.validate()
     records = _load_development_records(training_config)
+    excluded_labels = set(cross_validation.excluded_labels)
+    if excluded_labels:
+        available_labels = _group_labels(records)
+        unknown_labels = sorted(excluded_labels - available_labels)
+        if unknown_labels:
+            raise ValueError(f"Cross-validation excluded_labels are not present in the data: {unknown_labels}.")
+        records = [
+            {
+                **record,
+                "spans": [
+                    span
+                    for span in record.get("spans", [])
+                    if str(span.get("label")) not in excluded_labels
+                ],
+            }
+            for record in records
+        ]
     grouped_records: dict[str, list[dict[str, Any]]] = {}
     for row_index, record in enumerate(records):
         group_value = record.get(cross_validation.group_column)
@@ -264,6 +281,7 @@ def prepare_cross_validation_folds(
         "seed": cross_validation.seed,
         "group_column": cross_validation.group_column,
         "stratify_by": cross_validation.stratify_by,
+        "excluded_labels": sorted(excluded_labels),
         "group_count": len(grouped_records),
         "record_count": len(records),
         "label_group_support": label_group_support,

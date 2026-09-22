@@ -12,7 +12,7 @@ from typing import Any
 from .config import SweepConfig, SweepParameter, dump_config_yaml, dump_yaml_mapping
 from .cross_validation import aggregate_fold_nervaluate_results, prepare_cross_validation_folds
 from .training import run_pipeline
-from .utils import ensure_directory, remove_checkpoint_directories, remove_model_weight_files, write_json
+from .utils import create_timestamped_run_directory, remove_checkpoint_directories, remove_model_weight_files, write_json
 
 
 def cast_sampled_value(parameter: SweepParameter, value: Any) -> Any:
@@ -178,12 +178,16 @@ def persist_sweep_state(
     return summary
 
 
-def run_sweep(sweep_config: SweepConfig) -> Path:
+def run_sweep(sweep_config: SweepConfig, *, timestamp: str | None = None) -> Path:
     sweep_config.validate()
     rng = random.Random(sweep_config.seed)
     objective_metric = sweep_config.objective_metric or sweep_config.base_config.primary_metric
 
-    sweep_root = ensure_directory(Path(sweep_config.output_dir) / sweep_config.name)
+    sweep_root = create_timestamped_run_directory(
+        sweep_config.output_dir,
+        sweep_config.name,
+        timestamp=timestamp,
+    )
     dump_yaml_mapping(sweep_root / "sweep_config_used.yaml", sweep_config.to_dict())
     fold_specs = None
     if sweep_config.cross_validation is not None:

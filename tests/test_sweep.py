@@ -34,7 +34,7 @@ def test_sample_trial_overrides_uses_defined_search_space():
         output_dir="outputs/sweeps",
         num_trials=2,
         search_strategy="random",
-        seed=42,
+        seed=25,
         objective_metric="eval_f1_macro",
         objective_mode="max",
         base_config=TrainingConfig(
@@ -83,7 +83,7 @@ def test_grid_search_enumerates_cartesian_product():
         output_dir="outputs/sweeps",
         num_trials=10,
         search_strategy="grid",
-        seed=42,
+        seed=25,
         objective_metric="eval_f1_macro",
         objective_mode="max",
         base_config=TrainingConfig(
@@ -113,7 +113,7 @@ def test_grid_search_requires_explicit_values():
         output_dir="outputs/sweeps",
         num_trials=4,
         search_strategy="grid",
-        seed=42,
+        seed=25,
         objective_metric="eval_f1_macro",
         objective_mode="max",
         base_config=TrainingConfig(
@@ -140,7 +140,7 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
         output_dir=str(tmp_path / "outputs"),
         num_trials=2,
         search_strategy="grid",
-        seed=42,
+        seed=25,
         objective_metric="eval_f1_macro",
         objective_mode="max",
         base_config=TrainingConfig(
@@ -158,7 +158,7 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
     def fake_run_pipeline(config, run_test_evaluation=False, save_model=True):
         state["calls"] += 1
         state["save_model_values"].append(save_model)
-        run_dir = tmp_path / "outputs" / "demo_incremental" / config.run_name
+        run_dir = Path(config.output_dir) / config.run_name
         run_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_dir = run_dir / f"checkpoint-{state['calls']}"
         checkpoint_dir.mkdir()
@@ -174,12 +174,13 @@ def test_run_sweep_persists_incremental_leaderboard_and_summary(tmp_path, monkey
 
     monkeypatch.setattr("token_classification.sweep.run_pipeline", fake_run_pipeline)
 
-    sweep_root = run_sweep(sweep_config)
+    sweep_root = run_sweep(sweep_config, timestamp="2026-09-02_10-30-25")
     leaderboard_path = sweep_root / "leaderboard.csv"
     summary_path = sweep_root / "summary.json"
 
     assert leaderboard_path.exists()
     assert summary_path.exists()
+    assert sweep_root.name == "demo_incremental_2026-09-02_10-30-25"
 
     leaderboard_rows = leaderboard_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(leaderboard_rows) == 3
