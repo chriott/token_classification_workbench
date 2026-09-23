@@ -22,7 +22,14 @@ This installs the package, its dependencies, and development tools, and makes th
 Training and splitting accept CSV, JSON, and JSONL files. Start with one complete document per record, a text field, and a list of labeled character spans. For example, one line of a JSONL file could be:
 
 ```json
-{"document_id":"doc-001","text":"Alice works in Berlin.","spans":[{"start":0,"end":5,"label":"PERSON"},{"start":15,"end":21,"label":"LOCATION"}]}
+{
+  "document_id": "doc-001",
+  "text": "Alice works in Berlin.",
+  "spans": [
+    { "start": 0, "end": 5, "label": "PERSON" },
+    { "start": 15, "end": 21, "label": "LOCATION" }
+  ]
+}
 ```
 
 Offsets refer to the exact text: `start` is inclusive and `end` is exclusive. Use an empty `spans` list for documents without annotations. Keep a stable, unique `document_id` for grouping chunks in cross-validation and reconstructing document-level predictions.
@@ -151,26 +158,26 @@ Prediction reads the saved tokenizer and training settings. Prepare long inputs 
 
 Useful configuration controls include:
 
-| Purpose | Settings |
-|---|---|
-| Model and inputs | `model_name`, `max_length`, train/validation/test file paths |
-| Annotation columns | `text_column`, `spans_column`, `optional_string_columns` |
-| Optimization | `train_learning_rate`, `train_batch_size`, `train_epochs`, `train_weight_decay`, `warmup_ratio` |
-| Memory and precision | `gradient_accumulation_steps`, `gradient_checkpointing`, `fp16`, `bf16` |
-| Selection | `primary_metric`, early-stopping settings, sweep objective |
-| Label filtering | `excluded_labels` in training configs; `cross_validation.excluded_labels` for CV-only filtering |
+| Purpose              | Settings                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Model and inputs     | `model_name`, `max_length`, train/validation/test file paths                                    |
+| Annotation columns   | `text_column`, `spans_column`, `optional_string_columns`                                        |
+| Optimization         | `train_learning_rate`, `train_batch_size`, `train_epochs`, `train_weight_decay`, `warmup_ratio` |
+| Memory and precision | `gradient_accumulation_steps`, `gradient_checkpointing`, `fp16`, `bf16`                         |
+| Selection            | `primary_metric`, early-stopping settings, sweep objective                                      |
+| Label filtering      | `excluded_labels` in training configs; `cross_validation.excluded_labels` for CV-only filtering |
 
 Enable mixed precision only on compatible hardware, and choose either FP16 or BF16. Label exclusions remove matching spans while keeping the documents; document any exclusions when interpreting metrics.
 
 To compare models or input lengths, reuse the same split manifest with `split-data --split-manifest-in`, prepare separate tokenizer-compatible chunks, and point each config to its own files. Matching token limits does not produce identical text boundaries across different tokenizers. Keep document membership and CV settings consistent for comparisons.
 
-| Workflow | Main artifacts |
-|---|---|
-| Data preparation and validation | Split manifest, label statistics, validation and coverage reports |
-| Training | Saved model/tokenizer, label mappings, `config_used.yaml`, `run_summary.json`, test metrics and prediction exports |
-| Sweeps | `sweep_config_used.yaml`, `summary.json`, `leaderboard.csv`, `best_config.yaml`; CV fold manifests and trial summaries |
-| Multi-seed final training | Per-seed reports and aggregate nervaluate JSON, CSV, and text reports |
-| Prediction | Row-level and document-level JSONL/CSV exports plus `prediction_summary.json` |
+| Workflow                        | Main artifacts                                                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Data preparation and validation | Split manifest, label statistics, validation and coverage reports                                                      |
+| Training                        | Saved model/tokenizer, label mappings, `config_used.yaml`, `run_summary.json`, test metrics and prediction exports     |
+| Sweeps                          | `sweep_config_used.yaml`, `summary.json`, `leaderboard.csv`, `best_config.yaml`; CV fold manifests and trial summaries |
+| Multi-seed final training       | Per-seed reports and aggregate nervaluate JSON, CSV, and text reports                                                  |
+| Prediction                      | Row-level and document-level JSONL/CSV exports plus `prediction_summary.json`                                          |
 
 Evaluation includes token-classification metrics and nervaluate strict, entity-type, and partial-match results, with micro/macro and per-label reporting. Labels without gold test examples are marked as not evaluable in the nervaluate reports.
 
@@ -189,3 +196,34 @@ Use `token-classification --help` or `token-classification <command> --help` for
 - [Hyperparameter tuning](docs/hyperparameter_tuning.md)
 - [Output artifacts](docs/outputs.md)
 - [Development notes](docs/development.md)
+
+## Citation
+
+Ibrahim Baroud, Christoph Otto, Vera Czehmann, Christine Hovhannisyan, Lisa Raithel, Sebastian Möller, and Roland Roller. 2026. [MultiGraSCCo: A Multilingual Anonymization Benchmark with Annotations of Personal Identifiers](https://aclanthology.org/2026.lrec-1.529/). In _Proceedings of the Fifteenth Language Resources and Evaluation Conference_, pages 6647–6660, Palma de Mallorca, Spain. ELRA Language Resource Association.
+
+```bibtex
+@inproceedings{baroud-etal-2026-multigrascco,
+    title = "{M}ulti{G}ra{SCC}o: A Multilingual Anonymization Benchmark with Annotations of Personal Identifiers",
+    author = {Baroud, Ibrahim  and
+      Otto, Christoph  and
+      Czehmann, Vera  and
+      Hovhannisyan, Christine  and
+      Raithel, Lisa  and
+      M{\"o}ller, Sebastian  and
+      Roller, Roland},
+    editor = "Piperidis, Stelios  and
+      Bel, N{\'u}ria  and
+      van den Heuvel, Henk  and
+      Ide, Nancy  and
+      Krek, Simon  and
+      Toral, Antonio",
+    booktitle = "Proceedings of the Fifteenth Language Resources and Evaluation Conference",
+    month = may,
+    year = "2026",
+    address = "Palma de Mallorca, Spain",
+    publisher = "ELRA Language Resource Association",
+    url = "https://aclanthology.org/2026.lrec-1.529/",
+    doi = "10.63317/4bzj7bdw86tn",
+    pages = "6647--6660"
+}
+```
